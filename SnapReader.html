@@ -1,969 +1,1119 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LensRead - Ultimate Smart Magnifier</title>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-    <style>
-        :root {
-            --bg-color: #121212;
-            --panel-color: #1e1e1e;
-            --text-color: #ffffff;
-            --accent-color: #ffcc00;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6fa">
+  <title>SnapReader | Accessible camera reader</title>
+  <meta name="description" content="Magnify, capture, recognize and read printed text aloud in your browser.">
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f2f5f9;
+      --surface: #ffffff;
+      --ink: #132238;
+      --muted: #43536a;
+      --line: #c7d1df;
+      --navy: #15345b;
+      --blue: #164f9b;
+      --blue-dark: #0d3977;
+      --yellow: #ffdb4d;
+      --focus: #005fcc;
+      --success: #155d38;
+      --danger: #8a1f25;
+      --radius: 18px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            user-select: none;
-        }
+    * { box-sizing: border-box; }
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      min-height: 100svh;
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font-size: 18px;
+      line-height: 1.5;
+    }
+    button, input, textarea { font: inherit; }
+    button {
+      min-height: 52px;
+      border: 2px solid transparent;
+      border-radius: 12px;
+      padding: 10px 16px;
+      color: #fff;
+      background: var(--blue);
+      font-weight: 750;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    button:hover:not(:disabled) { background: var(--blue-dark); }
+    button:disabled { color: #d2dae5; background: #56677d; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 4px solid var(--focus);
+      outline-offset: 3px;
+    }
+    .secondary {
+      color: var(--navy);
+      background: #edf3fb;
+      border-color: #9eafc4;
+    }
+    .secondary:hover:not(:disabled) { color: #fff; background: var(--navy); }
+    .quiet {
+      color: var(--navy);
+      background: transparent;
+      border-color: var(--line);
+    }
+    .quiet:hover:not(:disabled) { color: #fff; background: var(--navy); }
+    .app-shell { width: min(1440px, 100%); margin: 0 auto; padding: 18px clamp(14px, 2.5vw, 34px) 30px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand-mark {
+      display: grid;
+      width: 54px;
+      height: 54px;
+      flex: 0 0 54px;
+      place-items: center;
+      border-radius: 16px;
+      color: #fff;
+      background: var(--navy);
+      font-size: 30px;
+    }
+    h1 { margin: 0; color: var(--navy); font-size: clamp(1.55rem, 3vw, 2.15rem); line-height: 1.1; }
+    .tagline { margin: 4px 0 0; color: var(--muted); font-size: 1rem; }
+    #app-status {
+      max-width: 370px;
+      padding: 8px 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--navy);
+      background: var(--surface);
+      font-size: .95rem;
+      font-weight: 700;
+      text-align: center;
+    }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, .85fr); align-items: stretch; gap: 18px; }
+    .capture-column { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
+    .viewer-container {
+      position: relative;
+      min-height: 360px;
+      height: min(62svh, 760px);
+      overflow: hidden;
+      border: 2px solid #0d2038;
+      border-radius: var(--radius);
+      background: #081422;
+      isolation: isolate;
+    }
+    #video-wrapper {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      transform-origin: center center;
+      touch-action: pan-y;
+      will-change: transform;
+    }
+    #video, #canvas {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    #video { display: block; }
+    #video[hidden] { display: none; }
+    #canvas { display: none; }
+    #freeze-overlay {
+      position: absolute;
+      z-index: 3;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 13px;
+      border: 1px solid #fff;
+      border-radius: 999px;
+      color: #fff;
+      background: #162e4ce8;
+      font-size: .92rem;
+      font-weight: 800;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #scan-region-box {
+      position: absolute;
+      z-index: 4;
+      top: 29%;
+      left: 6%;
+      width: 88%;
+      height: 42%;
+      border: 4px solid var(--yellow);
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px #07111c45;
+      touch-action: none;
+      cursor: move;
+    }
+    #scan-region-box[hidden] { display: none; }
+    #scan-label {
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      max-width: calc(100% - 18px);
+      transform: translateX(-50%);
+      padding: 3px 9px;
+      border: 1px solid #132238;
+      border-radius: 7px;
+      color: #102038;
+      background: var(--yellow);
+      font-size: .82rem;
+      font-weight: 800;
+      line-height: 1.3;
+      text-align: center;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .handle {
+      position: absolute;
+      z-index: 2;
+      width: 34px;
+      height: 34px;
+      min-height: 34px;
+      padding: 0;
+      border: 3px solid #14243b;
+      border-radius: 50%;
+      background: var(--yellow);
+      touch-action: none;
+    }
+    .handle:hover:not(:disabled) { background: #fff1a6; }
+    .handle-nw { top: -18px; left: -18px; cursor: nwse-resize; }
+    .handle-ne { top: -18px; right: -18px; cursor: nesw-resize; }
+    .handle-sw { bottom: -18px; left: -18px; cursor: nesw-resize; }
+    .handle-se { bottom: -18px; right: -18px; cursor: nwse-resize; }
+    .viewer-hint {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      left: 12px;
+      z-index: 3;
+      color: #fff;
+      font-size: .93rem;
+      font-weight: 700;
+      text-align: center;
+      text-shadow: 0 1px 4px #000;
+      pointer-events: none;
+    }
+    .camera-controls, .action-row, .speech-controls, .tools-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .camera-controls button, .action-row button { flex: 1 1 180px; }
+    .control-card, .reader-panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: 0 4px 18px #14243b0b;
+    }
+    .control-card { padding: 14px; }
+    .action-row { margin-bottom: 10px; }
+    .capture-button { background: #155d38; }
+    .capture-button:hover:not(:disabled) { background: #0f472b; }
+    .scan-button { background: #553598; }
+    .scan-button:hover:not(:disabled) { background: #3d2671; }
+    .sub-controls { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px 16px; }
+    .range-wrap { display: flex; min-width: 0; align-items: center; gap: 12px; }
+    .range-wrap label { font-weight: 750; }
+    input[type="range"] { width: 100%; min-width: 100px; height: 30px; accent-color: var(--blue); }
+    output { min-width: 3.5em; color: var(--navy); font-weight: 800; text-align: right; }
+    details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; }
+    summary { width: fit-content; min-height: 42px; padding: 6px 3px; color: var(--blue-dark); font-weight: 800; cursor: pointer; }
+    .advanced-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 8px 0 2px; }
+    .advanced-grid button { min-height: 46px; }
+    .option-line { display: flex; min-height: 46px; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; }
+    .option-line input { width: 22px; height: 22px; accent-color: var(--blue); }
+    .curve-control { grid-column: 1 / -1; padding: 8px 10px; border-radius: 10px; background: #f2f5f9; }
+    .curve-control[hidden] { display: none; }
+    .help { margin-top: 9px; color: var(--muted); font-size: .98rem; }
+    .help summary { min-height: 36px; }
+    .help ol { margin: 8px 0 2px; padding-left: 26px; }
+    .help li + li { margin-top: 5px; }
+    .reader-panel { display: flex; min-width: 0; min-height: 500px; flex-direction: column; padding: clamp(14px, 2vw, 22px); }
+    .reader-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    h2 { margin: 0; color: var(--navy); font-size: 1.35rem; line-height: 1.25; }
+    .reader-note { margin: 5px 0 0; color: var(--muted); font-size: .94rem; }
+    #confidence { margin-top: 8px; color: var(--success); font-size: .94rem; font-weight: 800; }
+    #recognized-text {
+      display: block;
+      width: 100%;
+      min-height: 270px;
+      flex: 1;
+      resize: vertical;
+      border: 2px solid #8b9bb0;
+      border-radius: 12px;
+      padding: 16px;
+      color: #101d30;
+      background: #fff;
+      font-size: clamp(1.35rem, 2vw, 1.9rem);
+      font-weight: 650;
+      line-height: 1.55;
+    }
+    #recognized-text::placeholder { color: #526176; font-size: 1.05rem; font-weight: 500; }
+    .speech-controls { margin-top: 12px; }
+    .speech-controls button { flex: 1 1 135px; }
+    .warning-note { margin: 11px 0 0; color: var(--muted); font-size: .88rem; }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            overflow: hidden;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Instructions Disclaimer Popup overlay */
-        #disclaimer-popup {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .disclaimer-content {
-            background: #1e1e1e;
-            border: 3px solid var(--accent-color);
-            border-radius: 16px;
-            padding: 24px;
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-        }
-
-        .disclaimer-title {
-            color: var(--accent-color);
-            font-size: 1.5rem;
-            margin-bottom: 12px;
-            font-weight: 900;
-            text-transform: uppercase;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .disclaimer-text {
-            font-size: 1.05rem;
-            line-height: 1.5;
-            margin-bottom: 20px;
-            text-align: left;
-        }
-
-        .disclaimer-text ol {
-            margin-top: 8px;
-            padding-left: 20px;
-        }
-
-        .disclaimer-text li {
-            margin-bottom: 8px;
-        }
-
-        .disclaimer-btn {
-            background: var(--accent-color);
-            color: black;
-            border: none;
-            padding: 12px 24px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            border-radius: 8px;
-            cursor: pointer;
-            width: 100%;
-            text-transform: uppercase;
-        }
-
-        /* Viewport Container */
-        #viewer-container {
-            position: relative;
-            flex: 1;
-            width: 100%;
-            background-color: #000;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-        }
-
-        #video-wrapper {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transform-origin: center center;
-            cursor: move;
-        }
-
-        video, canvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            pointer-events: none;
-        }
-
-        /* Canvas stretched style */
-        #canvas.stretched {
-            object-fit: fill !important;
-        }
-
-        #canvas {
-            display: none;
-        }
-
-        /* Fully Multi-Directional Resizable Bounding Box */
-        #scan-region-box {
-            position: absolute;
-            width: 80%;
-            height: 20%;
-            top: 40%;
-            left: 10%;
-            border: 4px dashed var(--accent-color);
-            border-radius: 12px;
-            z-index: 5;
-            display: none; /* Hidden by default until freeze */
-            align-items: flex-end;
-            justify-content: center;
-            padding-bottom: 8px;
-            min-width: 100px;
-            min-height: 40px;
-        }
-
-        .handle {
-            position: absolute;
-            background: transparent;
-        }
-        .handle-n  { top: -10px; left: 0; width: 100%; height: 20px; cursor: ns-resize; }
-        .handle-s  { bottom: -10px; left: 0; width: 100%; height: 20px; cursor: ns-resize; }
-        .handle-e  { top: 0; right: -10px; width: 20px; height: 100%; cursor: ew-resize; }
-        .handle-w  { top: 0; left: -10px; width: 20px; height: 100%; cursor: ew-resize; }
-        .handle-nw { top: -10px; left: -10px; width: 24px; height: 24px; cursor: nwse-resize; }
-        .handle-ne { top: -10px; right: -10px; width: 24px; height: 24px; cursor: nesw-resize; }
-        .handle-sw { bottom: -10px; left: -10px; width: 24px; height: 24px; cursor: nesw-resize; }
-        .handle-se { bottom: -10px; right: -10px; width: 24px; height: 24px; cursor: nwse-resize; }
-
-        .corner-cue {
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            border: 4px solid var(--accent-color);
-            pointer-events: none;
-        }
-        .cue-tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
-        .cue-tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; }
-        .cue-bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; }
-        .cue-br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
-
-        #scan-label {
-            background: rgba(255, 204, 0, 0.85);
-            color: #000;
-            font-size: 0.8rem;
-            font-weight: bold;
-            padding: 4px 10px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            pointer-events: none;
-            margin-bottom: 2px;
-            z-index: 6;
-            transition: opacity 0.6s ease;
-            opacity: 1;
-        }
-
-        #freeze-overlay {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(235, 52, 52, 0.85);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 1.1rem;
-            letter-spacing: 1px;
-            z-index: 10;
-            transition: opacity 0.6s ease;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        #smart-text-container {
-            background-color: #000;
-            border-top: 3px solid var(--accent-color);
-            display: flex;
-            flex-direction: column;
-            z-index: 10;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* Fullscreen state logic classes */
-        #smart-text-container.fullscreen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 90;
-        }
-
-        #text-customizer-bar {
-            background-color: #111;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 15px;
-            border-bottom: 1px solid #222;
-        }
-
-        .bar-label {
-            font-size: 0.9rem;
-            color: #888;
-            font-weight: bold;
-        }
-
-        .text-controls {
-            display: flex;
-            gap: 10px;
-        }
-
-        .text-btn {
-            background: #222;
-            color: white;
-            border: 1px solid #444;
-            padding: 6px 14px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-
-        .btn-fullscreen-toggle {
-            background: #512da8;
-            border-color: #7e57c2;
-        }
-
-        #smart-text-bar {
-            padding: 15px;
-            max-height: 140px;
-            min-height: 80px;
-            overflow-y: auto;
-            background-color: #ffffff;
-            color: #000000;
-            flex: 1;
-            transition: max-height 0.3s ease;
-        }
-
-        #smart-text-container.fullscreen #smart-text-bar {
-            max-height: none;
-        }
-
-        #smart-text-bar.dark-mode {
-            background-color: #000000;
-            color: #ffffff;
-        }
-
-        #ai-output {
-            font-size: 1.8rem;
-            font-weight: 900;
-            line-height: 1.4;
-            text-align: center;
-            word-wrap: break-word;
-        }
-
-        .status-msg {
-            color: inherit;
-            font-size: inherit;
-            font-style: italic;
-            font-weight: bold;
-        }
-
-        #control-panel {
-            background-color: var(--panel-color);
-            padding: 15px 20px 20px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            border-top: 2px solid #333;
-            z-index: 20;
-            transition: all 0.3s ease;
-        }
-
-        .slider-container {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .slider-label {
-            font-size: 1.5rem;
-            font-weight: bold;
-            min-width: 45px;
-            text-align: center;
-        }
-
-        .zoom-slider {
-            flex: 1;
-            height: 25px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: #444;
-            border-radius: 12px;
-            outline: none;
-        }
-
-        .zoom-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            background: var(--accent-color);
-            cursor: pointer;
-        }
-
-        .btn-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
-        }
-
-        .btn {
-            background-color: #333;
-            color: white;
-            border: 2px solid #555;
-            border-radius: 12px;
-            padding: 12px 2px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-        }
-
-        .btn:disabled {
-            background-color: #222;
-            border-color: #333;
-            color: #555;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .btn:active {
-            transform: scale(0.98);
-        }
-
-        .btn.active {
-            background-color: var(--accent-color);
-            color: #000;
-            border-color: #fff;
-        }
-
-        .btn-action-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 2px;
-        }
-
-        .btn-large {
-            padding: 18px 10px;
-            font-size: 1.2rem;
-            border-radius: 14px;
-        }
-
-        .btn-freeze {
-            background-color: #cc3333;
-            border-color: #ff5555;
-            color: white;
-        }
-        .btn-freeze.active {
-            background-color: #33cc33;
-            border-color: #55ff55;
-        }
-
-        .btn-ai {
-            background-color: #512da8;
-            border-color: #7e57c2;
-            color: white;
-        }
-        .btn-ai:disabled {
-            background-color: #222;
-            border-color: #444;
-            color: #666;
-            cursor: not-allowed;
-        }
-        .btn-ai.ready {
-            background-color: #ffaa00;
-            border-color: #ffcc66;
-            color: black;
-        }
-
-        .btn-camera {
-            background-color: #2a4d69;
-            border-color: #4b86b4;
-        }
-
-        .help-trigger {
-            background: none;
-            border: none;
-            color: var(--accent-color);
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 4px;
-        }
-
-        .icon {
-            font-size: 1.2rem;
-        }
-    </style>
+    @media (max-width: 900px) {
+      .workspace { grid-template-columns: minmax(0, 1fr); }
+      .viewer-container { height: min(53svh, 590px); min-height: 300px; }
+      .reader-panel { min-height: 410px; }
+      #recognized-text { min-height: 190px; }
+    }
+    @media (max-width: 540px) {
+      body { font-size: 17px; }
+      .app-shell { padding: 12px 11px 24px; }
+      .topbar { align-items: flex-start; }
+      .brand { gap: 10px; }
+      .brand-mark { width: 46px; height: 46px; flex-basis: 46px; font-size: 25px; }
+      .tagline { max-width: 220px; font-size: .9rem; }
+      #app-status { max-width: 125px; padding: 7px 9px; border-radius: 12px; font-size: .82rem; }
+      .viewer-container { height: 43svh; min-height: 270px; }
+      .camera-controls, .action-row { gap: 8px; }
+      .camera-controls button, .action-row button { flex-basis: calc(50% - 8px); padding: 9px; font-size: .96rem; }
+      .control-card { padding: 11px; }
+      .sub-controls { grid-template-columns: 1fr; }
+      .advanced-grid { grid-template-columns: 1fr 1fr; }
+      .reader-panel { min-height: 390px; padding: 13px; }
+      #recognized-text { min-height: 190px; padding: 12px; }
+      .reader-heading { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
 </head>
 <body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">⌕</div>
+        <div>
+          <h1>SnapReader</h1>
+          <p class="tagline">See the words. Make them easier to read.</p>
+        </div>
+      </div>
+      <div id="app-status" role="status" aria-live="polite">Starting camera…</div>
+    </header>
 
-    <div id="disclaimer-popup">
-        <div class="disclaimer-content">
-            <h2 class="disclaimer-title">ℹ️ Scanning Alignment Rules</h2>
-            <div class="disclaimer-text">
-                <p>Follow these quick rules to capture your text perfectly:</p>
-                <ol>
-                    <li>Tap <strong>"Freeze Picture"</strong> first to capture the camera view.</li>
-                    <li>The yellow text box and the <strong>"↔️ Stretch View"</strong> button will automatically unlock after freezing.</li>
-                    <li>Drag with your finger to pan around, line up your box, and hit scan!</li>
-                    <li>Tap the <strong>"🔲 Fullscreen"</strong> option inside the text panel to scale up the text window!</li>
-                </ol>
+    <div class="workspace">
+      <section class="capture-column" aria-label="Camera and scan controls">
+        <div id="viewer-container" class="viewer-container" aria-label="Camera preview">
+          <div id="video-wrapper">
+            <video id="video" autoplay muted playsinline aria-label="Live camera preview"></video>
+            <canvas id="canvas" aria-label="Captured image"></canvas>
+          </div>
+
+          <div id="scan-region-box" role="group" aria-label="Selected text area. Drag to move it. Use the corner handles or their arrow keys to resize." tabindex="0" hidden>
+            <span id="scan-label">Move this box over the text</span>
+            <button class="handle handle-nw" type="button" data-direction="nw" aria-label="Resize text area from top left"></button>
+            <button class="handle handle-ne" type="button" data-direction="ne" aria-label="Resize text area from top right"></button>
+            <button class="handle handle-sw" type="button" data-direction="sw" aria-label="Resize text area from bottom left"></button>
+            <button class="handle handle-se" type="button" data-direction="se" aria-label="Resize text area from bottom right"></button>
+          </div>
+          <div id="freeze-overlay" hidden>Image captured</div>
+          <div class="viewer-hint" id="viewer-hint">Hold the camera steady and bring the print into view.</div>
+        </div>
+
+        <div class="control-card">
+          <div class="action-row">
+            <button id="btn-capture" class="capture-button" type="button" disabled>Capture image</button>
+            <button id="btn-scan" class="scan-button" type="button" disabled>Recognize text</button>
+            <button id="btn-retake" class="secondary" type="button" hidden>Retake image</button>
+            <button id="btn-upload" class="secondary" type="button">Choose an image</button>
+            <input id="image-upload" class="visually-hidden" type="file" accept="image/*" aria-label="Choose a picture containing text">
+          </div>
+
+          <div class="sub-controls">
+            <div class="range-wrap">
+              <label for="zoom">Magnification</label>
+              <input type="range" id="zoom" min="1" max="5" step="0.1" value="1">
+              <output id="zoom-val" for="zoom">1×</output>
             </div>
-            <button class="disclaimer-btn" onclick="closeDisclaimer()">Got It!</button>
-        </div>
-    </div>
+            <button id="btn-reset-view" class="quiet" type="button">Reset view</button>
+          </div>
 
-    <div id="viewer-container">
-        <div id="video-wrapper">
-            <video id="video" autoplay playsinline></video>
-            <canvas id="canvas"></canvas>
-        </div>
-
-        <div id="scan-region-box">
-            <div class="handle handle-n" data-direction="n"></div>
-            <div class="handle handle-s" data-direction="s"></div>
-            <div class="handle handle-e" data-direction="e"></div>
-            <div class="handle handle-w" data-direction="w"></div>
-            <div class="handle handle-nw" data-direction="nw"></div>
-            <div class="handle handle-ne" data-direction="ne"></div>
-            <div class="handle handle-sw" data-direction="sw"></div>
-            <div class="handle handle-se" data-direction="se"></div>
-            
-            <div class="corner-cue cue-tl"></div>
-            <div class="corner-cue cue-tr"></div>
-            <div class="corner-cue cue-bl"></div>
-            <div class="corner-cue cue-br"></div>
-
-            <span id="scan-label">Adjust Box to Fit Text</span>
-        </div>
-        <div id="freeze-overlay">VIEW LOCKED / FREEZE</div>
-    </div>
-
-    <div id="smart-text-container">
-        <div id="text-customizer-bar">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="bar-label">TEXT VIEW:</span>
-                <button class="help-trigger" onclick="openDisclaimer()" title="View Instructions">ℹ️ Instructions</button>
+          <details>
+            <summary>More image controls</summary>
+            <div class="advanced-grid">
+              <button id="btn-camera" class="secondary" type="button" disabled>Switch camera</button>
+              <button id="btn-area" class="secondary" type="button" aria-pressed="false">Select text area</button>
+              <button id="btn-contrast" class="secondary" type="button" aria-pressed="false">Boost preview contrast</button>
+              <button id="btn-mono" class="secondary" type="button" aria-pressed="false">Black and white preview</button>
+              <label class="option-line">
+                <input id="curve-enabled" type="checkbox">
+                Flatten curved print
+              </label>
+              <div id="curve-control" class="curve-control" hidden>
+                <div class="range-wrap">
+                  <label for="curve-strength">Curve strength</label>
+                  <input type="range" id="curve-strength" min="10" max="85" step="1" value="55">
+                  <output id="curve-value" for="curve-strength">55%</output>
+                </div>
+                <p class="reader-note">Best for words wrapped around a bottle, cup, or ball. Compare the result with the picture.</p>
+              </div>
             </div>
-            <div class="text-controls">
-                <button id="btn-fs-toggle" class="text-btn btn-fullscreen-toggle">🔲 Fullscreen</button>
-                <button id="btn-text-invert" class="text-btn">🌓 Contrast</button>
-                <button id="btn-text-dec" class="text-btn">A-</button>
-                <button id="btn-text-inc" class="text-btn">A+</button>
-            </div>
+          </details>
+
+          <details class="help">
+            <summary>How to use SnapReader</summary>
+            <ol>
+              <li>Point the camera at the words and hold steady. Use magnification if the print is small.</li>
+              <li>Capture the image, then choose <strong>Recognize text</strong>. You can also choose a picture.</li>
+            <li>For curved packaging, enable <strong>Flatten curved print</strong>. Use <strong>Select text area</strong> when a picture contains unrelated text.</li>
+            <li>Review the result, correct anything the camera may have misread, then choose <strong>Read aloud</strong>.</li>
+          </ol>
+          <p class="reader-note">Text recognition runs in your browser. The first scan needs an internet connection to load the English OCR engine.</p>
+        </details>
         </div>
-        <div id="smart-text-bar">
-            <div id="ai-output">
-                <span class="status-msg">INITIALIZING SYSTEM... PLEASE WAIT</span>
-            </div>
+      </section>
+
+      <section class="reader-panel" aria-labelledby="reader-title">
+        <div class="reader-heading">
+          <div>
+            <h2 id="reader-title">Recognized text</h2>
+            <p class="reader-note">The words appear here in a large, editable reading area.</p>
+            <div id="confidence" aria-live="polite"><span id="confidence-text">Ready when you are.</span><span id="scan-progress" aria-hidden="true"></span></div>
+          </div>
         </div>
+        <label class="visually-hidden" for="recognized-text">Recognized text. Edit it to correct mistakes before reading aloud.</label>
+        <textarea id="recognized-text" spellcheck="false" placeholder="Capture an image, then choose “Recognize text.” You can edit the result before it is read aloud."></textarea>
+        <div class="speech-controls">
+          <button id="btn-speak" type="button" disabled>Read aloud</button>
+          <button id="btn-stop" class="secondary" type="button" disabled>Stop reading</button>
+          <button id="btn-copy" class="quiet" type="button" disabled>Copy text</button>
+        </div>
+        <p class="warning-note">Small, blurred, partly hidden, or curved print can be misread. The OCR score is not a measure of exactness. Check important words and numbers against the image.</p>
+      </section>
     </div>
+  </main>
 
-    <div id="control-panel">
-        <div class="slider-container">
-            <span class="slider-label">🔍</span>
-            <input type="range" id="zoom" class="zoom-slider" min="1" max="4" step="0.1" value="1">
-            <span class="slider-label" id="zoom-val">1x</span>
-        </div>
+  <script>
+    (function () {
+      'use strict';
 
-        <div class="btn-grid">
-            <button id="btn-stretch" class="btn" disabled>
-                <span class="icon">↔️</span>
-                <span id="stretch-label">Stretch View</span>
-            </button>
-            <button id="btn-screen-contrast" class="btn">
-                <span class="icon">🌓</span>
-                <span>Contrast</span>
-            </button>
-            <button id="btn-mono" class="btn">
-                <span class="icon">🔳</span>
-                <span>B & W</span>
-            </button>
-            <button id="btn-camera" class="btn btn-camera">
-                <span class="icon">🔄</span>
-                <span>Switch Cam</span>
-            </button>
-            <button id="btn-reset-view" class="btn">
-                <span class="icon">🔄</span>
-                <span>Reset View</span>
-            </button>
-        </div>
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const wrapper = document.getElementById('video-wrapper');
+      const viewer = document.getElementById('viewer-container');
+      const selection = document.getElementById('scan-region-box');
+      const status = document.getElementById('app-status');
+      const hint = document.getElementById('viewer-hint');
+      const confidenceLabel = document.getElementById('confidence');
+      const confidenceText = document.getElementById('confidence-text');
+      const scanProgress = document.getElementById('scan-progress');
+      const output = document.getElementById('recognized-text');
+      const captureButton = document.getElementById('btn-capture');
+      const scanButton = document.getElementById('btn-scan');
+      const retakeButton = document.getElementById('btn-retake');
+      const uploadButton = document.getElementById('btn-upload');
+      const uploadInput = document.getElementById('image-upload');
+      const cameraButton = document.getElementById('btn-camera');
+      const areaButton = document.getElementById('btn-area');
+      const zoom = document.getElementById('zoom');
+      const zoomValue = document.getElementById('zoom-val');
+      const curveEnabled = document.getElementById('curve-enabled');
+      const curveStrength = document.getElementById('curve-strength');
+      const curveValue = document.getElementById('curve-value');
+      const curveControl = document.getElementById('curve-control');
+      const speechButton = document.getElementById('btn-speak');
+      const stopButton = document.getElementById('btn-stop');
+      const copyButton = document.getElementById('btn-copy');
 
-        <div class="btn-action-row">
-            <button id="btn-freeze" class="btn btn-large btn-freeze" disabled>
-                <span class="icon" id="freeze-icon">⏸️</span>
-                <span id="freeze-text">Freeze Picture</span>
-            </button>
-            <button id="btn-ai" class="btn btn-large btn-ai" disabled>
-                <span class="icon">👁️‍🗨️</span>
-                <span>Scan Text</span>
-            </button>
-        </div>
-    </div>
+      const MAX_IMAGE_EDGE = 4096;
+      let stream = null;
+      let devices = [];
+      let deviceIndex = 0;
+      let frozen = false;
+      let sourceKind = 'camera';
+      let selectArea = false;
+      let panning = false;
+      let selectionGesture = null;
+      let gestureOrigin = null;
+      let pan = { x: 0, y: 0 };
+      let filters = { contrast: false, mono: false };
+      let tesseractLoading = null;
+      let worker = null;
+      let workerReady = null;
+      let uploadedUrl = null;
+      let isScanning = false;
+      let currentUtterance = null;
 
-    <canvas id="ocr-processing-canvas" style="display:none;"></canvas>
+      function setStatus(message) {
+        status.textContent = message;
+      }
 
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const videoWrapper = document.getElementById('video-wrapper');
-        const ocrCanvas = document.getElementById('ocr-processing-canvas');
-        const ocrCtx = ocrCanvas.getContext('2d');
-        
-        const viewerContainer = document.getElementById('viewer-container');
-        const scanRegionBox = document.getElementById('scan-region-box');
-        const scanLabel = document.getElementById('scan-label');
-        const zoomSlider = document.getElementById('zoom');
-        const zoomVal = document.getElementById('zoom-val');
-        const btnStretch = document.getElementById('btn-stretch');
-        const btnScreenContrast = document.getElementById('btn-screen-contrast');
-        const btnMono = document.getElementById('btn-mono');
-        const btnCamera = document.getElementById('btn-camera');
-        const btnResetView = document.getElementById('btn-reset-view');
-        
-        const btnFreeze = document.getElementById('btn-freeze');
-        const freezeText = document.getElementById('freeze-text');
-        const freezeIcon = document.getElementById('freeze-icon');
-        const freezeOverlay = document.getElementById('freeze-overlay');
-        const btnAI = document.getElementById('btn-ai');
+      function setConfidence(message, kind) {
+        confidenceText.textContent = message;
+        scanProgress.textContent = '';
+        confidenceLabel.style.color = kind === 'warning' ? '#8a1f25' : '#155d38';
+      }
 
-        const smartTextContainer = document.getElementById('smart-text-container');
-        const smartTextBar = document.getElementById('smart-text-bar');
-        const aiOutput = document.getElementById('ai-output');
-        const btnFSToggle = document.getElementById('btn-fs-toggle');
-        const btnTextInvert = document.getElementById('btn-text-invert');
-        const btnTextDec = document.getElementById('btn-text-dec');
-        const btnTextInc = document.getElementById('btn-text-inc');
-        const disclaimerPopup = document.getElementById('disclaimer-popup');
+      function setScanReady(ready) {
+        scanButton.disabled = !ready || isScanning;
+        captureButton.disabled = frozen || !stream;
+        captureButton.hidden = frozen;
+        retakeButton.hidden = !frozen;
+        uploadButton.disabled = isScanning;
+      }
 
-        let currentStream = null;
-        let videoDevices = [];
-        let currentDeviceIndex = 0;
-        let isFrozen = false;
-        let isStretchedMode = false;
-        let currentFontSize = 1.8;
-        let labelFadeTimeout = null;
-        let overlayFadeTimeout = null;
-        let schedulerInstance = null;
-        
-        let activeFilters = {
-            screenInvert: false,
-            mono: false
+      function updatePreview() {
+        const scale = Number(zoom.value);
+        zoomValue.value = scale.toFixed(1).replace(/\.0$/, '') + '×';
+        zoomValue.textContent = zoomValue.value;
+        wrapper.style.transform = 'translate(' + pan.x + 'px, ' + pan.y + 'px) scale(' + scale + ')';
+        const filterParts = [];
+        if (filters.contrast) filterParts.push('contrast(1.55)');
+        if (filters.mono) filterParts.push('grayscale(1)');
+        wrapper.style.filter = filterParts.length ? filterParts.join(' ') : 'none';
+      }
+
+      function stopCamera() {
+        if (stream) {
+          stream.getTracks().forEach(function (track) { track.stop(); });
+          stream = null;
+        }
+      }
+
+      function cameraMessage(error) {
+        if (!window.isSecureContext && location.hostname !== 'localhost') {
+          return 'Camera needs a secure page (HTTPS). You can choose a picture instead.';
+        }
+        if (error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
+          return 'Camera access was blocked. Allow camera access or choose a picture.';
+        }
+        if (error && (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError')) {
+          return 'No camera found. You can choose a picture instead.';
+        }
+        return 'Camera unavailable. You can choose a picture instead.';
+      }
+
+      async function openCamera(deviceId) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setStatus(cameraMessage());
+          hint.textContent = 'Choose a picture to scan text.';
+          return false;
+        }
+
+        setStatus('Waiting for camera permission…');
+        stopCamera();
+        const videoConstraints = deviceId
+          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+
+        const waitTimer = window.setTimeout(function () {
+          if (!stream) setStatus('Camera is still waiting. Allow camera access or choose a picture.');
+        }, 8000);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+          video.srcObject = stream;
+          await new Promise(function (resolve) {
+            if (video.readyState >= 1) resolve();
+            else video.addEventListener('loadedmetadata', resolve, { once: true });
+          });
+          await video.play();
+          const activeId = stream.getVideoTracks()[0] && stream.getVideoTracks()[0].getSettings().deviceId;
+          devices = (await navigator.mediaDevices.enumerateDevices()).filter(function (item) { return item.kind === 'videoinput'; });
+          deviceIndex = Math.max(0, devices.findIndex(function (item) { return item.deviceId === activeId; }));
+          cameraButton.disabled = devices.length < 2;
+          frozen = false;
+          sourceKind = 'camera';
+          video.hidden = false;
+          canvas.style.display = 'none';
+          setStatus('Camera ready. Point at the print and capture.');
+          hint.textContent = 'Hold the camera steady and bring the print into view.';
+          setScanReady(false);
+          return true;
+        } catch (error) {
+          setStatus(cameraMessage(error));
+          hint.textContent = 'Choose a picture to scan text.';
+          captureButton.disabled = true;
+          cameraButton.disabled = true;
+          return false;
+        } finally {
+          window.clearTimeout(waitTimer);
+        }
+      }
+
+      function stopSpeech() {
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        currentUtterance = null;
+        stopButton.disabled = true;
+        speechButton.disabled = !output.value.trim();
+        speechButton.textContent = 'Read aloud';
+      }
+
+      function updateOutputControls() {
+        const hasText = Boolean(output.value.trim());
+        speechButton.disabled = !hasText || !('speechSynthesis' in window);
+        copyButton.disabled = !hasText;
+      }
+
+      function drawImageToCanvas(source, width, height) {
+        const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        frozen = true;
+        video.hidden = true;
+        canvas.style.display = 'block';
+        document.getElementById('freeze-overlay').hidden = false;
+        hint.textContent = selectArea
+          ? 'Move the yellow box over the words. Its corner handles can resize the area.'
+          : 'Image captured. Choose “Recognize text” when you are ready.';
+        selection.hidden = !selectArea;
+        setScanReady(true);
+        setStatus('Image captured at ' + canvas.width + ' × ' + canvas.height + '.');
+      }
+
+      function captureFrame() {
+        if (!video.videoWidth || !video.videoHeight) {
+          setStatus('Camera is still starting. Please wait a moment.');
+          return;
+        }
+        sourceKind = 'camera';
+        drawImageToCanvas(video, video.videoWidth, video.videoHeight);
+      }
+
+      function retake() {
+        frozen = false;
+        document.getElementById('freeze-overlay').hidden = true;
+        selection.hidden = true;
+        canvas.style.display = 'none';
+        video.hidden = false;
+        pan = { x: 0, y: 0 };
+        zoom.value = '1';
+        updatePreview();
+        setScanReady(false);
+        if (sourceKind === 'camera' && stream) {
+          setStatus('Camera ready. Point at the print and capture.');
+          hint.textContent = 'Hold the camera steady and bring the print into view.';
+        } else {
+          setStatus('Choose a picture or capture a camera image.');
+          hint.textContent = 'Choose a picture to scan text.';
+        }
+      }
+
+      function getSourceCrop() {
+        if (!canvas.width || !canvas.height) return null;
+        if (!selectArea || selection.hidden) return canvas;
+
+        const imageRect = canvas.getBoundingClientRect();
+        const boxRect = selection.getBoundingClientRect();
+        const imageRatio = canvas.width / canvas.height;
+        let displayWidth = imageRect.width;
+        let displayHeight = imageRect.height;
+        if (displayWidth / displayHeight > imageRatio) displayWidth = displayHeight * imageRatio;
+        else displayHeight = displayWidth / imageRatio;
+        const displayLeft = imageRect.left + (imageRect.width - displayWidth) / 2;
+        const displayTop = imageRect.top + (imageRect.height - displayHeight) / 2;
+
+        const left = Math.max(boxRect.left, displayLeft);
+        const top = Math.max(boxRect.top, displayTop);
+        const right = Math.min(boxRect.right, displayLeft + displayWidth);
+        const bottom = Math.min(boxRect.bottom, displayTop + displayHeight);
+        if (right - left < 12 || bottom - top < 12) return null;
+
+        const sx = (left - displayLeft) * canvas.width / displayWidth;
+        const sy = (top - displayTop) * canvas.height / displayHeight;
+        const sw = (right - left) * canvas.width / displayWidth;
+        const sh = (bottom - top) * canvas.height / displayHeight;
+        const crop = document.createElement('canvas');
+        crop.width = Math.max(1, Math.round(sw));
+        crop.height = Math.max(1, Math.round(sh));
+        crop.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+        return crop;
+      }
+
+      function scaleForOCR(source) {
+        const longest = Math.max(source.width, source.height);
+        const scale = Math.min(3, Math.max(1, 2200 / longest));
+        const target = document.createElement('canvas');
+        target.width = Math.max(1, Math.round(source.width * scale));
+        target.height = Math.max(1, Math.round(source.height * scale));
+        const targetContext = target.getContext('2d', { willReadFrequently: true });
+        targetContext.imageSmoothingEnabled = true;
+        targetContext.imageSmoothingQuality = 'high';
+        targetContext.drawImage(source, 0, 0, target.width, target.height);
+        return target;
+      }
+
+      function enhanceForOCR(source) {
+        const enhanced = document.createElement('canvas');
+        enhanced.width = source.width;
+        enhanced.height = source.height;
+        const enhancedContext = enhanced.getContext('2d', { willReadFrequently: true });
+        enhancedContext.drawImage(source, 0, 0);
+        const image = enhancedContext.getImageData(0, 0, enhanced.width, enhanced.height);
+        const pixels = image.data;
+        const histogram = new Uint32Array(256);
+        const total = pixels.length / 4;
+        for (let i = 0; i < pixels.length; i += 4) {
+          const gray = Math.round(0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]);
+          histogram[gray] += 1;
+        }
+        const percentile = function (fraction) {
+          const target = total * fraction;
+          let count = 0;
+          for (let value = 0; value < histogram.length; value += 1) {
+            count += histogram[value];
+            if (count >= target) return value;
+          }
+          return 255;
         };
-
-        let isPanning = false;
-        let startPanX = 0, startPanY = 0;
-        let currentPanX = 0, currentPanY = 0;
-
-        function closeDisclaimer() { disclaimerPopup.style.display = 'none'; }
-        function openDisclaimer() { disclaimerPopup.style.display = 'flex'; }
-
-        // --- RESIZING & PANNING CONTROLS ---
-        let currentHandle = null;
-        let startX, startY, startTop, startLeft, startWidth, startHeight;
-
-        viewerContainer.addEventListener('mousedown', handlePointerDown);
-        viewerContainer.addEventListener('touchstart', handlePointerDown, { passive: false });
-        window.addEventListener('mousemove', handlePointerMove);
-        window.addEventListener('touchmove', handlePointerMove, { passive: false });
-        window.addEventListener('mouseup', handlePointerUp);
-        window.addEventListener('touchend', handlePointerUp);
-
-        function showScanLabelTemporarily() {
-            scanLabel.style.opacity = "1";
-            clearTimeout(labelFadeTimeout);
-            labelFadeTimeout = setTimeout(() => { scanLabel.style.opacity = "0"; }, 2000);
+        const low = percentile(0.02);
+        const high = Math.max(low + 1, percentile(0.98));
+        const spread = high - low;
+        for (let i = 0; i < pixels.length; i += 4) {
+          const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+          const adjusted = Math.max(0, Math.min(255, Math.round((gray - low) * 255 / spread)));
+          pixels[i] = adjusted;
+          pixels[i + 1] = adjusted;
+          pixels[i + 2] = adjusted;
         }
+        enhancedContext.putImageData(image, 0, 0);
+        return enhanced;
+      }
 
-        function handlePointerDown(e) {
-            if (!isFrozen) return; 
-            
-            const handle = e.target.closest('.handle');
-            const targetInsideBox = e.target.closest('#scan-region-box');
-            const eventTarget = e.touches ? e.touches[0] : e;
+      function flattenCurvedText(source) {
+        const strength = Number(curveStrength.value) / 100 * 1.05;
+        const sine = Math.sin(strength);
+        const expansion = strength / sine;
+        const flattened = document.createElement('canvas');
+        flattened.width = Math.ceil(source.width * expansion);
+        flattened.height = Math.ceil(source.height * expansion);
+        const inputContext = source.getContext('2d', { willReadFrequently: true });
+        const sourceImage = inputContext.getImageData(0, 0, source.width, source.height);
+        const outputContext = flattened.getContext('2d');
+        const outputImage = outputContext.createImageData(flattened.width, flattened.height);
+        const sourcePixels = sourceImage.data;
+        const outputPixels = outputImage.data;
+        const sourceHalfX = source.width / 2;
+        const sourceHalfY = source.height / 2;
+        const outputHalfX = flattened.width / 2;
+        const outputHalfY = flattened.height / 2;
 
-            if (handle) {
-                e.preventDefault();
-                showScanLabelTemporarily();
-                currentHandle = handle.dataset.direction;
-                const rect = scanRegionBox.getBoundingClientRect();
-                const containerRect = viewerContainer.getBoundingClientRect();
-                
-                startLeft = rect.left - containerRect.left;
-                startTop = rect.top - containerRect.top;
-                startWidth = rect.width;
-                startHeight = rect.height;
-                
-                startX = eventTarget.clientX;
-                startY = eventTarget.clientY;
-            } else if (!targetInsideBox) {
-                isPanning = true;
-                startPanX = eventTarget.clientX - currentPanX;
-                startPanY = eventTarget.clientY - currentPanY;
+        for (let y = 0; y < flattened.height; y += 1) {
+          const normalizedY = (y - outputHalfY) / outputHalfY;
+          const sourceY = Math.max(0, Math.min(source.height - 1,
+            Math.round(sourceHalfY + sourceHalfY * Math.sin(normalizedY * strength) / sine)));
+          for (let x = 0; x < flattened.width; x += 1) {
+            const normalizedX = (x - outputHalfX) / outputHalfX;
+            const sourceX = Math.max(0, Math.min(source.width - 1,
+              Math.round(sourceHalfX + sourceHalfX * Math.sin(normalizedX * strength) / sine)));
+            const sourceIndex = (sourceY * source.width + sourceX) * 4;
+            const outputIndex = (y * flattened.width + x) * 4;
+            outputPixels[outputIndex] = sourcePixels[sourceIndex];
+            outputPixels[outputIndex + 1] = sourcePixels[sourceIndex + 1];
+            outputPixels[outputIndex + 2] = sourcePixels[sourceIndex + 2];
+            outputPixels[outputIndex + 3] = sourcePixels[sourceIndex + 3];
+          }
+        }
+        outputContext.putImageData(outputImage, 0, 0);
+        return flattened;
+      }
+
+      async function loadTesseract() {
+        if (window.Tesseract && typeof window.Tesseract.createWorker === 'function') return;
+        if (!tesseractLoading) {
+          tesseractLoading = new Promise(function (resolve, reject) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = function () {
+              script.remove();
+              tesseractLoading = null;
+              reject(new Error('The OCR engine could not be loaded. Check your internet connection and try again.'));
+            };
+            document.head.appendChild(script);
+          });
+        }
+        await tesseractLoading;
+        if (!window.Tesseract || typeof window.Tesseract.createWorker !== 'function') {
+          tesseractLoading = null;
+          throw new Error('The OCR engine did not start. Check your internet connection and try again.');
+        }
+      }
+
+      async function getWorker() {
+        if (worker) return worker;
+        if (workerReady) return workerReady;
+        workerReady = (async function () {
+          await loadTesseract();
+          worker = await window.Tesseract.createWorker('eng', 1, {
+            logger: function (message) {
+              if (!isScanning || !message) return;
+              if (typeof message.progress === 'number') {
+                const step = message.status === 'recognizing text' ? 'Reading image' : 'Preparing OCR';
+                scanProgress.textContent = ' · ' + step + ' ' + Math.round(message.progress * 100) + '%';
+              }
             }
+          });
+          await worker.setParameters({ preserve_interword_spaces: '1' });
+          return worker;
+        })();
+        try {
+          return await workerReady;
+        } catch (error) {
+          workerReady = null;
+          throw error;
+        }
+      }
+
+      function resultScore(data) {
+        const words = (data.words || []).filter(function (word) {
+          return word.text && word.text.trim();
+        });
+        if (!words.length) return data.text && data.text.trim() ? 1 : -1;
+        const weight = words.reduce(function (sum, word) {
+          return sum + Math.max(1, Math.min(8, word.text.trim().length));
+        }, 0);
+        const confidenceSum = words.reduce(function (sum, word) {
+          return sum + word.confidence * Math.max(1, Math.min(8, word.text.trim().length));
+        }, 0);
+        return confidenceSum / weight;
+      }
+
+      function normalizedText(text) {
+        return text.toLocaleLowerCase().match(/[a-z0-9]+/g)?.join(' ') || '';
+      }
+
+      async function recognizeCandidate(activeWorker, image, label) {
+        const result = await activeWorker.recognize(image);
+        return {
+          text: (result.data.text || '').trim(),
+          score: resultScore(result.data),
+          label: label
+        };
+      }
+
+      async function recognizeText() {
+        if (!frozen || isScanning) return;
+        const crop = getSourceCrop();
+        if (!crop) {
+          setStatus('The selected area is outside the image. Move it over the words and try again.');
+          return;
         }
 
-        function handlePointerMove(e) {
-            if (!isFrozen) return;
-            const eventTarget = e.touches ? e.touches[0] : e;
+        isScanning = true;
+        scanButton.disabled = true;
+        captureButton.disabled = true;
+        uploadButton.disabled = true;
+        scanButton.textContent = 'Recognizing…';
+        setStatus('Preparing the image for reading.');
+        setConfidence('Loading the on-device OCR engine…');
+        try {
+          const activeWorker = await getWorker();
+          const original = scaleForOCR(crop);
+          const psm = window.Tesseract.PSM || {};
+          const blockMode = psm.SINGLE_BLOCK === undefined ? 6 : psm.SINGLE_BLOCK;
+          const sparseMode = psm.SPARSE_TEXT === undefined ? 11 : psm.SPARSE_TEXT;
+          const candidates = [];
+          await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: blockMode });
+          candidates.push(await recognizeCandidate(activeWorker, original, 'original image · text block'));
+          candidates.push(await recognizeCandidate(activeWorker, enhanceForOCR(original), 'detail enhancement · text block'));
+          await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: sparseMode });
+          candidates.push(await recognizeCandidate(activeWorker, original, 'original image · scattered text'));
+          if (curveEnabled.checked) {
+            const flattened = scaleForOCR(flattenCurvedText(crop));
+            await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: blockMode });
+            candidates.push(await recognizeCandidate(activeWorker, flattened, 'curved-print flattening · text block'));
+            candidates.push(await recognizeCandidate(activeWorker, enhanceForOCR(flattened), 'curve flattening with detail enhancement'));
+            await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: sparseMode });
+            candidates.push(await recognizeCandidate(activeWorker, flattened, 'curved-print flattening · scattered text'));
+          }
 
-            if (currentHandle) {
-                e.preventDefault();
-                const deltaX = eventTarget.clientX - startX;
-                const deltaY = eventTarget.clientY - startY;
-                const containerRect = viewerContainer.getBoundingClientRect();
-
-                let newLeft = startLeft;
-                let newTop = startTop;
-                let newWidth = startWidth;
-                let newHeight = startHeight;
-
-                if (currentHandle.includes('e')) newWidth = startWidth + deltaX;
-                if (currentHandle.includes('s')) newHeight = startHeight + deltaY;
-                if (currentHandle.includes('w')) { newWidth = startWidth - deltaX; newLeft = startLeft + deltaX; }
-                if (currentHandle.includes('n')) { newHeight = startHeight - deltaY; newTop = startTop + deltaY; }
-
-                if (newWidth >= 100 && newLeft >= 0 && (newLeft + newWidth) <= containerRect.width) {
-                    scanRegionBox.style.left = `${(newLeft / containerRect.width) * 100}%`;
-                    scanRegionBox.style.width = `${(newWidth / containerRect.width) * 100}%`;
-                }
-                if (newHeight >= 40 && newTop >= 0 && (newTop + newHeight) <= containerRect.height) {
-                    scanRegionBox.style.top = `${(newTop / containerRect.height) * 100}%`;
-                    scanRegionBox.style.height = `${(newHeight / containerRect.height) * 100}%`;
-                }
-            } else if (isPanning) {
-                e.preventDefault();
-                currentPanX = eventTarget.clientX - startPanX;
-                currentPanY = eventTarget.clientY - startPanY;
-                updateVisuals();
+          candidates.sort(function (left, right) { return right.score - left.score; });
+          const best = candidates[0];
+          const distinctReadings = new Set(candidates
+            .map(function (candidate) { return normalizedText(candidate.text); })
+            .filter(Boolean));
+          const methodsDisagree = distinctReadings.size > 1;
+          if (!best || !best.text) {
+            output.value = '';
+            setConfidence('No words found. Move closer, add light, or try a tighter text area.', 'warning');
+            setStatus('No text found in the image. You can adjust the view and scan again.');
+          } else {
+            output.value = best.text;
+            const scoreText = best.score >= 0 ? 'OCR engine score: ' + Math.round(best.score) + '/100; this does not guarantee exact text.' : 'Text detected.';
+            let resultNote = methodsDisagree
+              ? ' Recognition methods disagree; review the result carefully.'
+              : ' Best result: ' + best.label + '. Check the words against the image.';
+            setStatus('Text recognized. Review it or choose Read aloud.');
+            if (best.score >= 0 && best.score < 62) {
+              resultNote += ' Try more light, a closer view, or curved-print flattening.';
             }
+            setConfidence(scoreText + resultNote, methodsDisagree || (best.score >= 0 && best.score < 62) ? 'warning' : undefined);
+          }
+          updateOutputControls();
+        } catch (error) {
+          console.error(error);
+          setConfidence(error && error.message ? error.message : 'The scan could not be completed.', 'warning');
+          setStatus('Scan failed. Please try again.');
+        } finally {
+          isScanning = false;
+          scanButton.textContent = 'Recognize text';
+          scanButton.disabled = !frozen;
+          captureButton.disabled = false;
+          uploadButton.disabled = false;
         }
+      }
 
-        function handlePointerUp() { 
-            currentHandle = null; 
-            isPanning = false;
+      function updateSelectionState() {
+        areaButton.setAttribute('aria-pressed', String(selectArea));
+        areaButton.textContent = selectArea ? 'Scan full image' : 'Select text area';
+        selection.hidden = !frozen || !selectArea;
+        hint.textContent = frozen
+          ? (selectArea ? 'Move the yellow box over the words. Its corner handles can resize the area.' : 'Image captured. Choose “Recognize text” when you are ready.')
+          : hint.textContent;
+      }
+
+      function selectionRect() {
+        const rect = selection.getBoundingClientRect();
+        const parent = viewer.getBoundingClientRect();
+        return {
+          left: rect.left - parent.left,
+          top: rect.top - parent.top,
+          width: rect.width,
+          height: rect.height,
+          parentWidth: parent.width,
+          parentHeight: parent.height
+        };
+      }
+
+      function setSelectionRect(left, top, width, height) {
+        const parent = viewer.getBoundingClientRect();
+        const minWidth = 100;
+        const minHeight = 70;
+        width = Math.max(minWidth, Math.min(parent.width, width));
+        height = Math.max(minHeight, Math.min(parent.height, height));
+        left = Math.max(0, Math.min(parent.width - width, left));
+        top = Math.max(0, Math.min(parent.height - height, top));
+        selection.style.left = (left / parent.width * 100) + '%';
+        selection.style.top = (top / parent.height * 100) + '%';
+        selection.style.width = (width / parent.width * 100) + '%';
+        selection.style.height = (height / parent.height * 100) + '%';
+      }
+
+      function resizeByDirection(direction, deltaX, deltaY) {
+        const box = selectionRect();
+        let left = box.left;
+        let top = box.top;
+        let width = box.width;
+        let height = box.height;
+        if (direction.indexOf('e') !== -1) width += deltaX;
+        if (direction.indexOf('s') !== -1) height += deltaY;
+        if (direction.indexOf('w') !== -1) { left += deltaX; width -= deltaX; }
+        if (direction.indexOf('n') !== -1) { top += deltaY; height -= deltaY; }
+        setSelectionRect(left, top, width, height);
+      }
+
+      viewer.addEventListener('pointerdown', function (event) {
+        if (!frozen || !selectArea) {
+          if (!frozen) return;
+          panning = true;
+          gestureOrigin = { x: event.clientX - pan.x, y: event.clientY - pan.y };
+          return;
         }
+        if (!event.target.closest('#scan-region-box')) return;
+        event.preventDefault();
+        const handle = event.target.closest('.handle');
+        const box = selectionRect();
+        selectionGesture = {
+          mode: handle ? handle.dataset.direction : 'move',
+          x: event.clientX,
+          y: event.clientY,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height
+        };
+        try { event.target.setPointerCapture(event.pointerId); } catch (_) {}
+      });
 
-        async function initSchedulerOCR() {
-            try {
-                schedulerInstance = Tesseract;
-                btnFreeze.removeAttribute('disabled');
-                aiOutput.innerHTML = `<span class="status-msg">1. TAP "FREEZE PICTURE"<br>2. TAP "STRETCH VIEW"<br>3. TAP "SCAN TEXT"</span>`;
-            } catch (err) { console.error(err); }
+      window.addEventListener('pointermove', function (event) {
+        if (selectionGesture) {
+          const dx = event.clientX - selectionGesture.x;
+          const dy = event.clientY - selectionGesture.y;
+          if (selectionGesture.mode === 'move') {
+            setSelectionRect(selectionGesture.left + dx, selectionGesture.top + dy, selectionGesture.width, selectionGesture.height);
+          } else {
+            const current = selectionRect();
+            const direction = selectionGesture.mode;
+            let left = current.left;
+            let top = current.top;
+            let width = current.width;
+            let height = current.height;
+            if (direction.indexOf('e') !== -1) width = selectionGesture.width + dx;
+            if (direction.indexOf('s') !== -1) height = selectionGesture.height + dy;
+            if (direction.indexOf('w') !== -1) { width = selectionGesture.width - dx; left = selectionGesture.left + dx; }
+            if (direction.indexOf('n') !== -1) { height = selectionGesture.height - dy; top = selectionGesture.top + dy; }
+            setSelectionRect(left, top, width, height);
+          }
+          return;
         }
-
-        async function getCameraDevices() {
-            try {
-                const initialStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                initialStream.getTracks().forEach(track => track.stop());
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                videoDevices = devices.filter(device => device.kind === 'videoinput');
-                const backCameraIndex = videoDevices.findIndex(device => 
-                    device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment')
-                );
-                if (backCameraIndex !== -1) currentDeviceIndex = backCameraIndex;
-            } catch (err) { console.error(err); }
+        if (panning && frozen) {
+          pan = { x: event.clientX - gestureOrigin.x, y: event.clientY - gestureOrigin.y };
+          updatePreview();
         }
+      });
+      window.addEventListener('pointerup', function () { selectionGesture = null; panning = false; });
+      window.addEventListener('pointercancel', function () { selectionGesture = null; panning = false; });
 
-        async function startStream(deviceId) {
-            if (currentStream) currentStream.getTracks().forEach(track => track.stop());
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia({
-                    video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1280 }, height: { ideal: 720 } },
-                    audio: false
-                });
-                video.srcObject = currentStream;
-                video.onloadedmetadata = () => { updateVisuals(); };
-            } catch (err) { if (deviceId) startStream(null); }
+      selection.addEventListener('keydown', function (event) {
+        if (!event.target.closest('.handle')) return;
+        const direction = event.target.dataset.direction;
+        const step = event.shiftKey ? 20 : 6;
+        let dx = 0;
+        let dy = 0;
+        if (event.key === 'ArrowLeft') dx = -step;
+        if (event.key === 'ArrowRight') dx = step;
+        if (event.key === 'ArrowUp') dy = -step;
+        if (event.key === 'ArrowDown') dy = step;
+        if (!dx && !dy) return;
+        event.preventDefault();
+        resizeByDirection(direction, dx, dy);
+      });
+
+      zoom.addEventListener('input', updatePreview);
+      document.getElementById('btn-reset-view').addEventListener('click', function () {
+        pan = { x: 0, y: 0 };
+        zoom.value = '1';
+        filters = { contrast: false, mono: false };
+        document.getElementById('btn-contrast').setAttribute('aria-pressed', 'false');
+        document.getElementById('btn-mono').setAttribute('aria-pressed', 'false');
+        updatePreview();
+      });
+      document.getElementById('btn-contrast').addEventListener('click', function (event) {
+        filters.contrast = !filters.contrast;
+        event.currentTarget.setAttribute('aria-pressed', String(filters.contrast));
+        updatePreview();
+      });
+      document.getElementById('btn-mono').addEventListener('click', function (event) {
+        filters.mono = !filters.mono;
+        event.currentTarget.setAttribute('aria-pressed', String(filters.mono));
+        updatePreview();
+      });
+
+      captureButton.addEventListener('click', captureFrame);
+      retakeButton.addEventListener('click', retake);
+      scanButton.addEventListener('click', recognizeText);
+      areaButton.addEventListener('click', function () {
+        selectArea = !selectArea;
+        updateSelectionState();
+      });
+      cameraButton.addEventListener('click', async function () {
+        if (devices.length < 2) return;
+        const wasFrozen = frozen;
+        const nextIndex = (deviceIndex + 1) % devices.length;
+        const opened = await openCamera(devices[nextIndex].deviceId);
+        if (opened && wasFrozen) setStatus('Camera switched. Capture a new image when ready.');
+      });
+      curveEnabled.addEventListener('change', function () {
+        curveControl.hidden = !curveEnabled.checked;
+      });
+      curveStrength.addEventListener('input', function () {
+        curveValue.value = curveStrength.value + '%';
+        curveValue.textContent = curveValue.value;
+      });
+
+      uploadButton.addEventListener('click', function () { uploadInput.click(); });
+      uploadInput.addEventListener('change', function () {
+        const file = uploadInput.files && uploadInput.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+          setStatus('Choose an image file such as JPEG, PNG, or WebP.');
+          return;
         }
+        if (uploadedUrl) URL.revokeObjectURL(uploadedUrl);
+        uploadedUrl = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = function () {
+          sourceKind = 'file';
+          drawImageToCanvas(image, image.naturalWidth, image.naturalHeight);
+          setStatus('Picture loaded at ' + canvas.width + ' × ' + canvas.height + '.');
+          uploadInput.value = '';
+        };
+        image.onerror = function () {
+          setStatus('This picture could not be opened. Try another image.');
+          URL.revokeObjectURL(uploadedUrl);
+          uploadedUrl = null;
+        };
+        image.src = uploadedUrl;
+      });
 
-        async function switchCamera() {
-            if (videoDevices.length <= 1) await getCameraDevices();
-            if (videoDevices.length > 1) {
-                currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
-                await startStream(videoDevices[currentDeviceIndex].deviceId);
-            }
+      output.addEventListener('input', updateOutputControls);
+      speechButton.addEventListener('click', function () {
+        const text = output.value.trim();
+        if (!text || !('speechSynthesis' in window)) {
+          setStatus('Read aloud is not available in this browser.');
+          return;
         }
-
-        function updateVisuals() {
-            const zoomFactor = zoomSlider.value;
-            zoomVal.textContent = zoomFactor + 'x';
-            let filterString = '';
-            if (activeFilters.screenInvert) filterString += 'invert(1) ';
-            if (activeFilters.mono) filterString += 'grayscale(1) contrast(1.6) ';
-            
-            videoWrapper.style.transform = `translate(${currentPanX}px, ${currentPanY}px) scale(${zoomFactor})`;
-            videoWrapper.style.filter = filterString || 'none';
+        stopSpeech();
+        currentUtterance = new SpeechSynthesisUtterance(text);
+        currentUtterance.lang = 'en-US';
+        currentUtterance.onend = function () {
+          currentUtterance = null;
+          stopButton.disabled = true;
+          speechButton.disabled = !output.value.trim();
+          speechButton.textContent = 'Read aloud';
+        };
+        currentUtterance.onerror = function () {
+          currentUtterance = null;
+          stopButton.disabled = true;
+          speechButton.textContent = 'Read aloud';
+          setStatus('Speech could not be played. Check that this browser has a voice available.');
+        };
+        window.speechSynthesis.speak(currentUtterance);
+        stopButton.disabled = false;
+        speechButton.disabled = false;
+        speechButton.textContent = 'Reading…';
+      });
+      stopButton.addEventListener('click', stopSpeech);
+      copyButton.addEventListener('click', async function () {
+        try {
+          await navigator.clipboard.writeText(output.value);
+          setStatus('Recognized text copied.');
+        } catch (_) {
+          output.focus();
+          output.select();
+          setStatus('Text selected. Use your device’s Copy command.');
         }
+      });
 
-        function updateScanButtonState() {
-            if (isFrozen) {
-                btnStretch.removeAttribute('disabled');
-                scanRegionBox.style.display = 'flex'; 
-                if (!isStretchedMode) {
-                    btnAI.setAttribute('disabled', 'true');
-                    btnAI.classList.remove('ready');
-                    aiOutput.innerHTML = `<span class="status-msg" style="color: #ffcc00;">⚠️ SCAN BLOCKED!<br>TAP "STRETCH VIEW" TO SCAN TEXT.</span>`;
-                } else {
-                    btnAI.removeAttribute('disabled');
-                    btnAI.classList.add('ready');
-                    aiOutput.innerHTML = `<span class="status-msg">STRETCHED VIEW ACTIVE! READY TO SCAN TEXT.</span>`;
-                }
-            } else {
-                btnStretch.setAttribute('disabled', 'true');
-                btnAI.setAttribute('disabled', 'true');
-                btnAI.classList.remove('ready');
-                scanRegionBox.style.display = 'none'; 
-            }
-        }
+      window.addEventListener('pagehide', function () {
+        stopCamera();
+        stopSpeech();
+        if (worker) worker.terminate();
+        if (uploadedUrl) URL.revokeObjectURL(uploadedUrl);
+      });
 
-        // --- ENHANCED SPHERICAL UNWARPING & ROBUST OCR ENGINE ---
-        async function runOCRFromFrozenCanvas() {
-            if (!isStretchedMode) return;
-
-            aiOutput.innerHTML = `<span class="status-msg">UNWARPING SPHERE & SCANNING TEXT...</span>`;
-
-            const boxRect = scanRegionBox.getBoundingClientRect();
-            const viewRect = canvas.getBoundingClientRect();
-
-            const scaleX = canvas.width / viewRect.width;
-            const scaleY = canvas.height / viewRect.height;
-
-            const cropX = (boxRect.left - viewRect.left) * scaleX;
-            const cropY = (boxRect.top - viewRect.top) * scaleY;
-            const cropW = boxRect.width * scaleX;
-            const cropH = boxRect.height * scaleY;
-
-            ocrCanvas.width = Math.max(1, Math.floor(cropW));
-            ocrCanvas.height = Math.max(1, Math.floor(cropH));
-            ocrCtx.clearRect(0, 0, ocrCanvas.width, ocrCanvas.height);
-
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = ocrCanvas.width;
-            tempCanvas.height = ocrCanvas.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, ocrCanvas.width, ocrCanvas.height);
-
-            const srcData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-            const dstData = ocrCtx.createImageData(ocrCanvas.width, ocrCanvas.height);
-            
-            const w = tempCanvas.width;
-            const h = tempCanvas.height;
-            const midX = w / 2;
-            const midY = h / 2;
-            const r = Math.max(w, h) * 1.2;
-
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const dx = x - midX;
-                    const dy = y - midY;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    if (distance < r) {
-                        const factor = Math.asin(distance / r) / (distance / r);
-                        const srcX = Math.round(midX + dx * factor);
-                        const srcY = Math.round(midY + dy * factor);
-
-                        if (srcX >= 0 && srcX < w && srcY >= 0 && srcY < h) {
-                            const dstIdx = (y * w + x) * 4;
-                            const srcIdx = (srcY * w + srcX) * 4;
-                            
-                            dstData.data[dstIdx] = srcData.data[srcIdx];
-                            dstData.data[dstIdx+1] = srcData.data[srcIdx+1];
-                            dstData.data[dstIdx+2] = srcData.data[srcIdx+2];
-                            dstData.data[dstIdx+3] = srcData.data[srcIdx+3];
-                        }
-                    }
-                }
-            }
-            ocrCtx.putImageData(dstData, 0, 0);
-
-            const imgData = ocrCtx.getImageData(0, 0, ocrCanvas.width, ocrCanvas.height);
-            const data = imgData.data;
-            for (let i = 0; i < data.length; i += 4) {
-                const brightness = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-                const threshold = brightness > 120 ? 255 : 0;
-                data[i] = threshold; data[i+1] = threshold; data[i+2] = threshold;
-            }
-            ocrCtx.putImageData(imgData, 0, 0);
-
-            try {
-                const dataUrl = ocrCanvas.toDataURL('image/png');
-                const result = await schedulerInstance.recognize(dataUrl, 'eng');
-                
-                let textResult = result.data.text || "";
-                let cleanedText = textResult.replace(/[\_\~\`\|\[\]\{\}\:\\°]/g, ' ').trim();
-                cleanedText = cleanedText.replace(/\s+/g, ' ');
-
-                if (cleanedText.length > 0) {
-                    aiOutput.textContent = cleanedText.toUpperCase();
-                } else {
-                    aiOutput.innerHTML = `<span class="status-msg">NO WORDS FOUND INSIDE THE BOX.<br>RE-ADJUST THE BOX POSITION AND TRY AGAIN.</span>`;
-                }
-            } catch (e) {
-                aiOutput.innerHTML = `<span class="status-msg">SCANNING ERROR.<br>PLEASE ATTEMPT RE-SCAN.</span>`;
-            }
-        }
-
-        // --- BUTTON HANDLERS ---
-        zoomSlider.addEventListener('input', updateVisuals);
-
-        btnFSToggle.addEventListener('click', () => {
-            const isFS = smartTextContainer.classList.toggle('fullscreen');
-            btnFSToggle.textContent = isFS ? "📥 Minimize" : "🔲 Fullscreen";
-        });
-
-        btnStretch.addEventListener('click', () => {
-            if (!isFrozen) return;
-            isStretchedMode = !isStretchedMode;
-            btnStretch.classList.toggle('active', isStretchedMode);
-            canvas.classList.toggle('stretched', isStretchedMode);
-            updateScanButtonState();
-        });
-
-        btnScreenContrast.addEventListener('click', () => {
-            activeFilters.screenInvert = !activeFilters.screenInvert;
-            btnScreenContrast.classList.toggle('active', activeFilters.screenInvert);
-            updateVisuals();
-        });
-
-        btnMono.addEventListener('click', () => {
-            activeFilters.mono = !activeFilters.mono;
-            btnMono.classList.toggle('active', activeFilters.mono);
-            updateVisuals();
-        });
-
-        btnCamera.addEventListener('click', async () => {
-            if (isFrozen) btnFreeze.click();
-            await switchCamera();
-        });
-
-        btnResetView.addEventListener('click', () => {
-            currentPanX = 0;
-            currentPanY = 0;
-            zoomSlider.value = 1;
-            activeFilters.screenInvert = false;
-            activeFilters.mono = false;
-            btnScreenContrast.classList.remove('active');
-            btnMono.classList.remove('active');
-            updateVisuals();
-        });
-
-        btnFreeze.addEventListener('click', () => {
-            if (!isFrozen) {
-                canvas.width = 1280;
-                canvas.height = 720;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                video.style.display = 'none';
-                canvas.style.display = 'block';
-                
-                freezeOverlay.style.opacity = "1";
-                clearTimeout(overlayFadeTimeout);
-                overlayFadeTimeout = setTimeout(() => { freezeOverlay.style.opacity = "0"; }, 1500);
-                
-                btnFreeze.classList.add('active');
-                freezeText.textContent = "Unfreeze Feed";
-                freezeIcon.textContent = "▶️";
-                isFrozen = true;
-
-                updateScanButtonState();
-                showScanLabelTemporarily();
-            } else {
-                canvas.style.display = 'none';
-                video.style.display = 'block';
-                freezeOverlay.style.opacity = "0";
-                
-                if (isStretchedMode) btnStretch.click();
-
-                btnFreeze.classList.remove('active');
-                freezeText.textContent = "Freeze Picture";
-                freezeIcon.textContent = "⏸️";
-                isFrozen = false;
-
-                updateScanButtonState();
-                aiOutput.innerHTML = `<span class="status-msg">1. TAP "FREEZE PICTURE"<br>2. TAP "STRETCH VIEW"<br>3. TAP "SCAN TEXT"</span>`;
-                scanLabel.style.opacity = "1";
-            }
-        });
-
-        btnAI.addEventListener('click', async () => {
-            if (isFrozen) await runOCRFromFrozenCanvas();
-        });
-
-        btnTextInc.addEventListener('click', () => {
-            currentFontSize += 0.2;
-            aiOutput.style.fontSize = currentFontSize + 'rem';
-        });
-
-        btnTextDec.addEventListener('click', () => {
-            if (currentFontSize > 1.0) {
-                currentFontSize -= 0.2;
-                aiOutput.style.fontSize = currentFontSize + 'rem';
-            }
-        });
-
-        btnTextInvert.addEventListener('click', () => { smartTextBar.classList.toggle('dark-mode'); });
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            await getCameraDevices();
-            await startStream(videoDevices[currentDeviceIndex]?.deviceId || null);
-            aiOutput.style.fontSize = currentFontSize + 'rem';
-            setTimeout(() => { scanLabel.style.opacity = "0"; }, 3000);
-            await initSchedulerOCR();
-        });
-    </script>
+      updatePreview();
+      updateOutputControls();
+      setConfidence('Ready when you are.');
+      openCamera(null);
+    })();
+  </script>
 </body>
 </html>
