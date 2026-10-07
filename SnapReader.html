@@ -232,6 +232,7 @@
     .advanced-grid button { min-height: 46px; }
     .option-line { display: flex; min-height: 46px; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; }
     .option-line input { width: 22px; height: 22px; accent-color: var(--blue); }
+    .option-line select { min-height: 42px; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; color: var(--ink); background: #fff; }
     .curve-control { grid-column: 1 / -1; padding: 8px 10px; border-radius: 10px; background: #f2f5f9; }
     .curve-control[hidden] { display: none; }
     .help { margin-top: 9px; color: var(--muted); font-size: .98rem; }
@@ -363,12 +364,19 @@
                 Flatten curved print
               </label>
               <div id="curve-control" class="curve-control" hidden>
+                <label class="option-line" for="curve-shape">
+                  Curved surface
+                  <select id="curve-shape">
+                    <option value="sphere">Ball or spherical object</option>
+                    <option value="cylinder">Bottle or can</option>
+                  </select>
+                </label>
                 <div class="range-wrap">
                   <label for="curve-strength">Curve strength</label>
                   <input type="range" id="curve-strength" min="10" max="85" step="1" value="55">
                   <output id="curve-value" for="curve-strength">55%</output>
                 </div>
-                <p class="reader-note">Best for words wrapped around a bottle, cup, or ball. Compare the result with the picture.</p>
+                <p class="reader-note">Choose the closest shape. Unwrapping can help, but text hidden around the back of an object cannot be recovered.</p>
               </div>
             </div>
           </details>
@@ -432,6 +440,7 @@
       const zoom = document.getElementById('zoom');
       const zoomValue = document.getElementById('zoom-val');
       const curveEnabled = document.getElementById('curve-enabled');
+      const curveShape = document.getElementById('curve-shape');
       const curveStrength = document.getElementById('curve-strength');
       const curveValue = document.getElementById('curve-value');
       const curveControl = document.getElementById('curve-control');
@@ -457,6 +466,9 @@
       let uploadedUrl = null;
       let isScanning = false;
       let currentUtterance = null;
+      let isCapturing = false;
+      const sharpnessCanvas = document.createElement('canvas');
+      const sharpnessContext = sharpnessCanvas.getContext('2d', { willReadFrequently: true });
 
       function setStatus(message) {
         status.textContent = message;
@@ -586,13 +598,82 @@
         setStatus('Image captured at ' + canvas.width + ' × ' + canvas.height + '.');
       }
 
-      function captureFrame() {
+      function measureSharpness(source) {
+        const width = 320;
+        const height = Math.max(1, Math.round(width * source.height / source.width));
+        sharpnessCanvas.width = width;
+        sharpnessCanvas.height = height;
+        sharpnessContext.drawImage(source, 0, 0, width, height);
+        const pixels = sharpnessContext.getImageData(0, 0, width, height).data;
+        const grayAt = function (x, y) {
+          const index = (y * width + x) * 4;
+          return 0.299 * pixels[index] + 0.587 * pixels[index + 1] + 0.114 * pixels[index + 2];
+        };
+        let sum = 0;
+        let sumSquares = 0;
+        let count = 0;
+        for (let y = 1; y < height - 1; y += 1) {
+          for (let x = 1; x < width - 1; x += 1) {
+            const laplacian = 4 * grayAt(x, y) - grayAt(x - 1, y) - grayAt(x + 1, y) - grayAt(x, y - 1) - grayAt(x, y + 1);
+            sum += laplacian;
+            sumSquares += laplacian * laplacian;
+            count += 1;
+          }
+        }
+        return count ? sumSquares / count - (sum / count) ** 2 : 0;
+      }
+
+      function nextVideoFrame() {
+        if (typeof video.requestVideoFrameCallback === 'function') {
+          return new Promise(function (resolve) { video.requestVideoFrameCallback(resolve); });
+        }
+        return new Promise(function (resolve) { window.setTimeout(resolve, 120); });
+      }
+
+      async function captureFrame() {
         if (!video.videoWidth || !video.videoHeight) {
           setStatus('Camera is still starting. Please wait a moment.');
           return;
         }
-        sourceKind = 'camera';
-        drawImageToCanvas(video, video.videoWidth, video.videoHeight);
+        if (isCapturing) return;
+        isCapturing = true;
+        captureButton.disabled = true;
+        captureButton.textContent = 'Choosing a sharp frame…';
+        setStatus('Checking focus. Hold the camera steady for a moment.');
+        let bestFrame = null;
+        let bestScore = -1;
+        try {
+          for (let index = 0; index < 3; index += 1) {
+            await nextVideoFrame();
+            if (!video.videoWidth || !video.videoHeight) continue;
+            const score = measureSharpness(video);
+            if (score > bestScore) {
+              if (!bestFrame) bestFrame = document.createElement('canvas');
+              bestFrame.width = video.videoWidth;
+              bestFrame.height = video.videoHeight;
+              bestFrame.getContext('2d').drawImage(video, 0, 0, bestFrame.width, bestFrame.height);
+              bestScore = score;
+            }
+          }
+          if (!bestFrame) {
+            setStatus('Could not capture a camera frame. Please try again.');
+            return;
+          }
+          sourceKind = 'camera';
+          drawImageToCanvas(bestFrame, bestFrame.width, bestFrame.height);
+        } catch (error) {
+          console.warn('Sharp-frame selection failed; using the current camera frame.', error);
+          if (video.videoWidth && video.videoHeight) {
+            sourceKind = 'camera';
+            drawImageToCanvas(video, video.videoWidth, video.videoHeight);
+          } else {
+            setStatus('Could not capture a camera frame. Please try again.');
+          }
+        } finally {
+          isCapturing = false;
+          captureButton.textContent = 'Capture image';
+          captureButton.disabled = frozen || !stream;
+        }
       }
 
       function retake() {
@@ -649,12 +730,17 @@
         const longest = Math.max(source.width, source.height);
         const scale = Math.min(3, Math.max(1, 2200 / longest));
         const target = document.createElement('canvas');
-        target.width = Math.max(1, Math.round(source.width * scale));
-        target.height = Math.max(1, Math.round(source.height * scale));
+        const scaledWidth = Math.max(1, Math.round(source.width * scale));
+        const scaledHeight = Math.max(1, Math.round(source.height * scale));
+        const border = Math.max(12, Math.round(Math.min(scaledWidth, scaledHeight) * 0.015));
+        target.width = scaledWidth + border * 2;
+        target.height = scaledHeight + border * 2;
         const targetContext = target.getContext('2d', { willReadFrequently: true });
+        targetContext.fillStyle = '#fff';
+        targetContext.fillRect(0, 0, target.width, target.height);
         targetContext.imageSmoothingEnabled = true;
         targetContext.imageSmoothingQuality = 'high';
-        targetContext.drawImage(source, 0, 0, target.width, target.height);
+        targetContext.drawImage(source, border, border, scaledWidth, scaledHeight);
         return target;
       }
 
@@ -695,13 +781,62 @@
         return enhanced;
       }
 
+      function adaptiveThresholdForOCR(source) {
+        const width = source.width;
+        const height = source.height;
+        const sourceContext = source.getContext('2d', { willReadFrequently: true });
+        const image = sourceContext.getImageData(0, 0, width, height);
+        const pixels = image.data;
+        const stride = width + 1;
+        const integral = new Uint32Array(stride * (height + 1));
+        let overallTotal = 0;
+        for (let y = 1; y <= height; y += 1) {
+          let rowTotal = 0;
+          for (let x = 1; x <= width; x += 1) {
+            const pixel = ((y - 1) * width + x - 1) * 4;
+            const gray = Math.round(0.299 * pixels[pixel] + 0.587 * pixels[pixel + 1] + 0.114 * pixels[pixel + 2]);
+            rowTotal += gray;
+            integral[y * stride + x] = integral[(y - 1) * stride + x] + rowTotal;
+            overallTotal += gray;
+          }
+        }
+        const radius = Math.max(8, Math.min(24, Math.round(Math.min(width, height) * 0.018)));
+        const offset = Math.max(6, Math.min(14, Math.round(10 * Math.min(width, height) / 1000)));
+        const meanBrightness = overallTotal / (width * height);
+        const lightBackground = meanBrightness >= 127;
+        const output = document.createElement('canvas');
+        output.width = width;
+        output.height = height;
+        const outputContext = output.getContext('2d');
+        for (let y = 0; y < height; y += 1) {
+          const top = Math.max(0, y - radius);
+          const bottom = Math.min(height, y + radius + 1);
+          for (let x = 0; x < width; x += 1) {
+            const left = Math.max(0, x - radius);
+            const right = Math.min(width, x + radius + 1);
+            const area = (bottom - top) * (right - left);
+            const sum = integral[bottom * stride + right] - integral[top * stride + right]
+              - integral[bottom * stride + left] + integral[top * stride + left];
+            const pixel = (y * width + x) * 4;
+            const gray = 0.299 * pixels[pixel] + 0.587 * pixels[pixel + 1] + 0.114 * pixels[pixel + 2];
+            const threshold = sum / area + (lightBackground ? -offset : offset);
+            const foreground = lightBackground ? gray < threshold : gray > threshold;
+            const value = foreground ? 0 : 255;
+            pixels[pixel] = value;
+            pixels[pixel + 1] = value;
+            pixels[pixel + 2] = value;
+            pixels[pixel + 3] = 255;
+          }
+        }
+        outputContext.putImageData(image, 0, 0);
+        return output;
+      }
+
       function flattenCurvedText(source) {
         const strength = Number(curveStrength.value) / 100 * 1.05;
-        const sine = Math.sin(strength);
-        const expansion = strength / sine;
         const flattened = document.createElement('canvas');
-        flattened.width = Math.ceil(source.width * expansion);
-        flattened.height = Math.ceil(source.height * expansion);
+        flattened.width = source.width;
+        flattened.height = source.height;
         const inputContext = source.getContext('2d', { willReadFrequently: true });
         const sourceImage = inputContext.getImageData(0, 0, source.width, source.height);
         const outputContext = flattened.getContext('2d');
@@ -710,17 +845,27 @@
         const outputPixels = outputImage.data;
         const sourceHalfX = source.width / 2;
         const sourceHalfY = source.height / 2;
-        const outputHalfX = flattened.width / 2;
-        const outputHalfY = flattened.height / 2;
+        const maxLongitude = strength;
+        const maxLatitude = Math.min(0.9, strength * 0.78);
+        const longitudeSine = Math.sin(maxLongitude);
+        const latitudeSine = Math.sin(maxLatitude);
 
         for (let y = 0; y < flattened.height; y += 1) {
-          const normalizedY = (y - outputHalfY) / outputHalfY;
-          const sourceY = Math.max(0, Math.min(source.height - 1,
-            Math.round(sourceHalfY + sourceHalfY * Math.sin(normalizedY * strength) / sine)));
+          const normalizedY = (y - sourceHalfY) / sourceHalfY;
+          const latitude = normalizedY * maxLatitude;
+          const sourceY = curveShape.value === 'sphere'
+            ? Math.max(0, Math.min(source.height - 1,
+              Math.round(sourceHalfY + sourceHalfY * Math.sin(latitude) / latitudeSine)))
+            : y;
+          const horizontalScale = curveShape.value === 'sphere' ? Math.cos(latitude) : 1;
           for (let x = 0; x < flattened.width; x += 1) {
-            const normalizedX = (x - outputHalfX) / outputHalfX;
+            const normalizedX = (x - sourceHalfX) / sourceHalfX;
+            const longitude = normalizedX * maxLongitude;
+            const curvedX = curveShape.value === 'sphere'
+              ? Math.sin(longitude) * horizontalScale / longitudeSine
+              : Math.sin(longitude) / longitudeSine;
             const sourceX = Math.max(0, Math.min(source.width - 1,
-              Math.round(sourceHalfX + sourceHalfX * Math.sin(normalizedX * strength) / sine)));
+              Math.round(sourceHalfX + sourceHalfX * curvedX)));
             const sourceIndex = (sourceY * source.width + sourceX) * 4;
             const outputIndex = (y * flattened.width + x) * 4;
             outputPixels[outputIndex] = sourcePixels[sourceIndex];
@@ -731,6 +876,18 @@
         }
         outputContext.putImageData(outputImage, 0, 0);
         return flattened;
+      }
+
+      function rotateForOCR(source, degrees) {
+        const quarterTurn = Math.abs(degrees) % 180 === 90;
+        const rotated = document.createElement('canvas');
+        rotated.width = quarterTurn ? source.height : source.width;
+        rotated.height = quarterTurn ? source.width : source.height;
+        const context = rotated.getContext('2d');
+        context.translate(rotated.width / 2, rotated.height / 2);
+        context.rotate(degrees * Math.PI / 180);
+        context.drawImage(source, -source.width / 2, -source.height / 2);
+        return rotated;
       }
 
       async function loadTesseract() {
@@ -821,7 +978,7 @@
         captureButton.disabled = true;
         uploadButton.disabled = true;
         scanButton.textContent = 'Recognizing…';
-        setStatus('Preparing the image for reading.');
+        setStatus('Preparing several image versions for reading.');
         setConfidence('Loading the on-device OCR engine…');
         try {
           const activeWorker = await getWorker();
@@ -829,22 +986,50 @@
           const psm = window.Tesseract.PSM || {};
           const blockMode = psm.SINGLE_BLOCK === undefined ? 6 : psm.SINGLE_BLOCK;
           const sparseMode = psm.SPARSE_TEXT === undefined ? 11 : psm.SPARSE_TEXT;
+          const lineMode = psm.SINGLE_LINE === undefined ? 7 : psm.SINGLE_LINE;
           const candidates = [];
-          await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: blockMode });
-          candidates.push(await recognizeCandidate(activeWorker, original, 'original image · text block'));
-          candidates.push(await recognizeCandidate(activeWorker, enhanceForOCR(original), 'detail enhancement · text block'));
-          await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: sparseMode });
-          candidates.push(await recognizeCandidate(activeWorker, original, 'original image · scattered text'));
+          const runCandidate = async function (image, mode, label) {
+            await activeWorker.setParameters({
+              preserve_interword_spaces: '1',
+              tessedit_pageseg_mode: mode,
+              user_defined_dpi: '300'
+            });
+            candidates.push(await recognizeCandidate(activeWorker, image, label));
+          };
+          await runCandidate(original, blockMode, 'original image · text block');
+          await runCandidate(enhanceForOCR(original), blockMode, 'contrast enhancement · text block');
+          await runCandidate(adaptiveThresholdForOCR(original), blockMode, 'local contrast · text block');
+          await runCandidate(original, sparseMode, 'original image · scattered text');
+          if (original.width / original.height > 2.2) {
+            await runCandidate(original, lineMode, 'original image · single text line');
+          }
           if (curveEnabled.checked) {
-            const flattened = scaleForOCR(flattenCurvedText(crop));
-            await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: blockMode });
-            candidates.push(await recognizeCandidate(activeWorker, flattened, 'curved-print flattening · text block'));
-            candidates.push(await recognizeCandidate(activeWorker, enhanceForOCR(flattened), 'curve flattening with detail enhancement'));
-            await activeWorker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: sparseMode });
-            candidates.push(await recognizeCandidate(activeWorker, flattened, 'curved-print flattening · scattered text'));
+            const flattened = flattenCurvedText(original);
+            await runCandidate(flattened, blockMode, 'curved-print flattening · text block');
+            await runCandidate(enhanceForOCR(flattened), blockMode, 'curve flattening · contrast enhancement');
+            if (flattened.width / flattened.height > 2.2) {
+              await runCandidate(flattened, lineMode, 'curved-print flattening · single text line');
+            }
           }
 
-          candidates.sort(function (left, right) { return right.score - left.score; });
+          const initialBestScore = Math.max.apply(null, candidates.map(function (candidate) { return candidate.score; }));
+          const initialReadings = new Set(candidates
+            .map(function (candidate) { return normalizedText(candidate.text); })
+            .filter(Boolean));
+          if (initialBestScore < 72 || initialReadings.size > 1) {
+            for (const angle of [90, 180, 270]) {
+              await runCandidate(rotateForOCR(original, angle), blockMode, 'rotated ' + angle + '° · text block');
+            }
+          }
+
+          candidates.forEach(function (candidate) {
+            const candidateText = normalizedText(candidate.text);
+            const agreement = candidateText
+              ? candidates.filter(function (other) { return normalizedText(other.text) === candidateText; }).length
+              : 0;
+            candidate.rankScore = candidate.score + Math.max(0, agreement - 1) * 2;
+          });
+          candidates.sort(function (left, right) { return right.rankScore - left.rankScore; });
           const best = candidates[0];
           const distinctReadings = new Set(candidates
             .map(function (candidate) { return normalizedText(candidate.text); })
