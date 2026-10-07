@@ -25,6 +25,35 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
+    body[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #101722;
+      --surface: #1b2736;
+      --ink: #f2f6fb;
+      --muted: #c2cee0;
+      --line: #596b81;
+      --navy: #e7f0ff;
+      --blue: #2b69b8;
+      --blue-dark: #1d4f91;
+      --focus: #ffd84d;
+      --success: #a6e5bd;
+      --danger: #ffb6b9;
+    }
+    body[data-theme="high-contrast"] {
+      color-scheme: dark;
+      --page: #000;
+      --surface: #000;
+      --ink: #fff;
+      --muted: #fff;
+      --line: #fff;
+      --navy: #ffeb00;
+      --blue: #ffeb00;
+      --blue-dark: #fff;
+      --focus: #ffeb00;
+      --success: #fff;
+      --danger: #ffeb00;
+    }
+
     * { box-sizing: border-box; }
     body {
       min-width: 320px;
@@ -60,6 +89,20 @@
       background: #edf3fb;
       border-color: #9eafc4;
     }
+    body[data-theme="dark"] .secondary { color: var(--ink); background: #26384d; border-color: #8295ad; }
+    body[data-theme="dark"] .secondary:hover:not(:disabled),
+    body[data-theme="dark"] .quiet:hover:not(:disabled) { color: #101722; background: #e7f0ff; }
+    body[data-theme="high-contrast"] button { color: #000; border-color: #ffeb00; }
+    body[data-theme="high-contrast"] .secondary,
+    body[data-theme="high-contrast"] .quiet { color: #ffeb00; background: #000; border-color: #ffeb00; }
+    body[data-theme="high-contrast"] .secondary:hover:not(:disabled),
+    body[data-theme="high-contrast"] .quiet:hover:not(:disabled) { color: #000; background: #ffeb00; }
+    body[data-theme="high-contrast"] .capture-button,
+    body[data-theme="high-contrast"] .scan-button { color: #000; background: #ffeb00; }
+    body[data-theme="high-contrast"] .capture-button:hover:not(:disabled),
+    body[data-theme="high-contrast"] .scan-button:hover:not(:disabled) { color: #000; background: #fff; }
+    body[data-theme="dark"] .brand-mark { color: #fff; background: var(--blue-dark); }
+    body[data-theme="high-contrast"] .brand-mark { color: #000; background: #ffeb00; }
     .secondary:hover:not(:disabled) { color: #fff; background: var(--navy); }
     .quiet {
       color: var(--navy);
@@ -232,7 +275,7 @@
     .advanced-grid button { min-height: 46px; }
     .option-line { display: flex; min-height: 46px; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; }
     .option-line input { width: 22px; height: 22px; accent-color: var(--blue); }
-    .option-line select { min-height: 42px; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; color: var(--ink); background: #fff; }
+    .option-line select, .setting-row select { min-height: 44px; max-width: 100%; border: 2px solid var(--line); border-radius: 8px; padding: 6px 9px; color: var(--ink); background: var(--surface); }
     .curve-control { grid-column: 1 / -1; padding: 8px 10px; border-radius: 10px; background: #f2f5f9; }
     .curve-control[hidden] { display: none; }
     .help { margin-top: 9px; color: var(--muted); font-size: .98rem; }
@@ -253,8 +296,8 @@
       border: 2px solid #8b9bb0;
       border-radius: 12px;
       padding: 16px;
-      color: #101d30;
-      background: #fff;
+      color: var(--ink);
+      background: var(--surface);
       font-size: clamp(1.35rem, 2vw, 1.9rem);
       font-weight: 650;
       line-height: 1.55;
@@ -262,6 +305,26 @@
     #recognized-text::placeholder { color: #526176; font-size: 1.05rem; font-weight: 500; }
     .speech-controls { margin-top: 12px; }
     .speech-controls button { flex: 1 1 135px; }
+    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; padding: 8px 0 2px; }
+    .setting-row { display: grid; min-width: 0; gap: 5px; color: var(--ink); font-weight: 700; }
+    .setting-row input[type="range"] { width: 100%; min-height: 32px; accent-color: var(--blue); }
+    .setting-row output { text-align: left; }
+    .setting-row-full { grid-column: 1 / -1; }
+    .settings-help { margin: 0; color: var(--muted); font-size: .9rem; }
+    body[data-theme="dark"] .curve-control { background: #26384d; }
+    body[data-theme="high-contrast"] .curve-control { background: #000; border: 1px solid #ffeb00; }
+    body[data-theme="dark"] #recognized-text::placeholder { color: #c2cee0; }
+    body[data-theme="high-contrast"] #recognized-text::placeholder { color: #ffeb00; }
+    .alternative-readings { margin: 10px 0; padding: 10px; border: 2px solid #9eafc4; border-radius: 12px; background: var(--surface); }
+    .alternative-readings[hidden] { display: none; }
+    .alternative-readings h3 { margin: 0 0 6px; color: var(--navy); font-size: 1rem; }
+    .alternative-readings p { margin: 0 0 8px; color: var(--muted); font-size: .9rem; }
+    .alternative-list { display: grid; gap: 8px; }
+    .alternative-list button { min-height: 44px; color: var(--ink); background: var(--surface); border-color: var(--line); text-align: left; }
+    .alternative-list button:hover { color: #fff; background: var(--navy); }
+    body[data-theme="high-contrast"] .alternative-list button { color: #ffeb00; background: #000; }
+    body[data-theme="high-contrast"] .alternative-list button:hover { color: #000; background: #ffeb00; }
+    body[data-theme="high-contrast"] #recognized-text { border-color: #fff; }
     .warning-note { margin: 11px 0 0; color: var(--muted); font-size: .88rem; }
     .visually-hidden {
       position: absolute;
@@ -296,13 +359,15 @@
       .reader-panel { min-height: 390px; padding: 13px; }
       #recognized-text { min-height: 190px; padding: 12px; }
       .reader-heading { flex-direction: column; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .speech-controls button { flex-basis: calc(50% - 8px); }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
     }
   </style>
 </head>
-<body>
+<body data-theme="light">
   <main class="app-shell">
     <header class="topbar">
       <div class="brand">
@@ -369,6 +434,7 @@
                   <select id="curve-shape">
                     <option value="sphere">Ball or spherical object</option>
                     <option value="cylinder">Bottle or can</option>
+                    <option value="arch">Arched or curved text line</option>
                   </select>
                 </label>
                 <div class="range-wrap">
@@ -376,7 +442,7 @@
                   <input type="range" id="curve-strength" min="10" max="85" step="1" value="55">
                   <output id="curve-value" for="curve-strength">55%</output>
                 </div>
-                <p class="reader-note">Choose the closest shape. Unwrapping can help, but text hidden around the back of an object cannot be recovered.</p>
+                <p class="reader-note">SnapReader tries several curve strengths. For an arched line, it checks both curve directions. Text hidden around the back of an object cannot be recovered.</p>
               </div>
             </div>
           </details>
@@ -384,12 +450,12 @@
           <details class="help">
             <summary>How to use SnapReader</summary>
             <ol>
-              <li>Point the camera at the words and hold steady. Use magnification if the print is small.</li>
+              <li>Point the camera at the words and hold steady. Use magnification or select only the text area for small print. Slight camera tilt is corrected automatically.</li>
               <li>Capture the image, then choose <strong>Recognize text</strong>. You can also choose a picture.</li>
-            <li>For curved packaging, enable <strong>Flatten curved print</strong>. Use <strong>Select text area</strong> when a picture contains unrelated text.</li>
-            <li>Review the result, correct anything the camera may have misread, then choose <strong>Read aloud</strong>.</li>
-          </ol>
-          <p class="reader-note">Text recognition runs in your browser. The first scan needs an internet connection to load the English OCR engine.</p>
+              <li>For a ball, bottle, or arched line, open <strong>More image controls</strong>, enable <strong>Flatten curved print</strong>, and choose the closest shape. SnapReader compares several curve strengths.</li>
+              <li>Review the result and any alternative readings, correct mistakes, then choose <strong>Read aloud</strong>. Use <strong>Reading and display settings</strong> to change contrast, text size, voice, and speaking speed.</li>
+            </ol>
+            <p class="reader-note">Text recognition runs in your browser. The first scan needs an internet connection to load the English OCR engine.</p>
         </details>
         </div>
       </section>
@@ -402,13 +468,51 @@
             <div id="confidence" aria-live="polite"><span id="confidence-text">Ready when you are.</span><span id="scan-progress" aria-hidden="true"></span></div>
           </div>
         </div>
+        <div id="alternative-readings" class="alternative-readings" hidden aria-live="polite">
+          <h3>Other possible readings</h3>
+          <p>OCR methods found different words. Compare these options with the image and select the closest reading.</p>
+          <div id="alternative-list" class="alternative-list"></div>
+        </div>
         <label class="visually-hidden" for="recognized-text">Recognized text. Edit it to correct mistakes before reading aloud.</label>
         <textarea id="recognized-text" spellcheck="false" placeholder="Capture an image, then choose “Recognize text.” You can edit the result before it is read aloud."></textarea>
         <div class="speech-controls">
           <button id="btn-speak" type="button" disabled>Read aloud</button>
+          <button id="btn-pause" class="secondary" type="button" disabled>Pause reading</button>
           <button id="btn-stop" class="secondary" type="button" disabled>Stop reading</button>
           <button id="btn-copy" class="quiet" type="button" disabled>Copy text</button>
         </div>
+        <details id="accessibility-settings">
+          <summary>Reading and display settings</summary>
+          <div class="settings-grid">
+            <label class="setting-row" for="display-theme">Display theme
+              <select id="display-theme">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="high-contrast">High contrast: black and yellow</option>
+              </select>
+            </label>
+            <label class="setting-row" for="reader-size">Reading text size
+              <input id="reader-size" type="range" min="100" max="220" step="10" value="140">
+              <output id="reader-size-value" for="reader-size">140%</output>
+            </label>
+            <label class="setting-row" for="reader-spacing">Line spacing
+              <input id="reader-spacing" type="range" min="1.3" max="2.2" step="0.1" value="1.6">
+              <output id="reader-spacing-value" for="reader-spacing">1.6×</output>
+            </label>
+            <label class="setting-row" for="speech-rate">Speaking speed
+              <input id="speech-rate" type="range" min="0.7" max="1.3" step="0.1" value="1">
+              <output id="speech-rate-value" for="speech-rate">1×</output>
+            </label>
+            <label class="setting-row setting-row-full" for="speech-voice">Voice
+              <select id="speech-voice"><option value="">System default voice</option></select>
+            </label>
+            <label class="option-line setting-row-full" for="auto-read">
+              <input id="auto-read" type="checkbox">
+              Read each new result aloud automatically
+            </label>
+            <p class="settings-help setting-row-full">Display and speech choices are saved on this device. Available voices depend on your browser and operating system.</p>
+          </div>
+        </details>
         <p class="warning-note">Small, blurred, partly hidden, or curved print can be misread. The OCR score is not a measure of exactness. Check important words and numbers against the image.</p>
       </section>
     </div>
@@ -445,10 +549,30 @@
       const curveValue = document.getElementById('curve-value');
       const curveControl = document.getElementById('curve-control');
       const speechButton = document.getElementById('btn-speak');
+      const pauseButton = document.getElementById('btn-pause');
       const stopButton = document.getElementById('btn-stop');
       const copyButton = document.getElementById('btn-copy');
+      const themeSelect = document.getElementById('display-theme');
+      const readerSize = document.getElementById('reader-size');
+      const readerSizeValue = document.getElementById('reader-size-value');
+      const readerSpacing = document.getElementById('reader-spacing');
+      const readerSpacingValue = document.getElementById('reader-spacing-value');
+      const speechRate = document.getElementById('speech-rate');
+      const speechRateValue = document.getElementById('speech-rate-value');
+      const speechVoice = document.getElementById('speech-voice');
+      const autoRead = document.getElementById('auto-read');
+      const alternativeReadings = document.getElementById('alternative-readings');
+      const alternativeList = document.getElementById('alternative-list');
 
       const MAX_IMAGE_EDGE = 4096;
+      const PREFERENCES_KEY = 'snapreader-accessibility-v1';
+      let accessibilityPreferences = {};
+      let availableVoices = [];
+      try {
+        accessibilityPreferences = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || '{}') || {};
+      } catch (_) {
+        accessibilityPreferences = {};
+      }
       let stream = null;
       let devices = [];
       let deviceIndex = 0;
@@ -477,7 +601,62 @@
       function setConfidence(message, kind) {
         confidenceText.textContent = message;
         scanProgress.textContent = '';
-        confidenceLabel.style.color = kind === 'warning' ? '#8a1f25' : '#155d38';
+        confidenceLabel.style.color = kind === 'warning' ? 'var(--danger)' : 'var(--success)';
+      }
+
+      function saveAccessibilityPreferences() {
+        accessibilityPreferences = {
+          theme: themeSelect.value,
+          readerSize: Number(readerSize.value),
+          readerSpacing: Number(readerSpacing.value),
+          speechRate: Number(speechRate.value),
+          speechVoice: speechVoice.value,
+          autoRead: autoRead.checked
+        };
+        try {
+          localStorage.setItem(PREFERENCES_KEY, JSON.stringify(accessibilityPreferences));
+        } catch (_) { /* Settings remain available until this page is closed. */ }
+      }
+
+      function applyAccessibilityPreferences() {
+        const savedTheme = ['light', 'dark', 'high-contrast'].includes(accessibilityPreferences.theme)
+          ? accessibilityPreferences.theme : 'light';
+        themeSelect.value = savedTheme;
+        document.body.dataset.theme = savedTheme;
+        readerSize.value = String(Math.max(100, Math.min(220, Number(accessibilityPreferences.readerSize) || 140)));
+        readerSpacing.value = String(Math.max(1.3, Math.min(2.2, Number(accessibilityPreferences.readerSpacing) || 1.6)));
+        speechRate.value = String(Math.max(0.7, Math.min(1.3, Number(accessibilityPreferences.speechRate) || 1)));
+        autoRead.checked = accessibilityPreferences.autoRead === true;
+        readerSizeValue.value = readerSize.value + '%';
+        readerSizeValue.textContent = readerSizeValue.value;
+        readerSpacingValue.value = Number(readerSpacing.value).toFixed(1) + '×';
+        readerSpacingValue.textContent = readerSpacingValue.value;
+        speechRateValue.value = Number(speechRate.value).toFixed(1).replace(/\.0$/, '') + '×';
+        speechRateValue.textContent = speechRateValue.value;
+        output.style.fontSize = readerSize.value + '%';
+        output.style.lineHeight = readerSpacing.value;
+      }
+
+      function populateSpeechVoices() {
+        if (!('speechSynthesis' in window)) return;
+        const selectedVoice = speechVoice.value || accessibilityPreferences.speechVoice || '';
+        availableVoices = window.speechSynthesis.getVoices();
+        speechVoice.textContent = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'System default voice';
+        speechVoice.appendChild(defaultOption);
+        availableVoices
+          .slice()
+          .sort(function (left, right) { return left.name.localeCompare(right.name); })
+          .forEach(function (voice) {
+            const option = document.createElement('option');
+            option.value = voice.voiceURI;
+            option.textContent = voice.name + ' (' + voice.lang + ')';
+            speechVoice.appendChild(option);
+          });
+        speechVoice.value = availableVoices.some(function (voice) { return voice.voiceURI === selectedVoice; })
+          ? selectedVoice : '';
       }
 
       function setScanReady(ready) {
@@ -567,8 +746,10 @@
       }
 
       function stopSpeech() {
-        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         currentUtterance = null;
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        pauseButton.disabled = true;
+        pauseButton.textContent = 'Pause reading';
         stopButton.disabled = true;
         speechButton.disabled = !output.value.trim();
         speechButton.textContent = 'Read aloud';
@@ -578,6 +759,51 @@
         const hasText = Boolean(output.value.trim());
         speechButton.disabled = !hasText || !('speechSynthesis' in window);
         copyButton.disabled = !hasText;
+        pauseButton.disabled = !currentUtterance;
+        stopButton.disabled = !currentUtterance;
+      }
+
+      function speakOutput() {
+        const text = output.value.trim();
+        if (!text || !('speechSynthesis' in window)) {
+          setStatus('Read aloud is not available in this browser.');
+          return;
+        }
+        stopSpeech();
+        const utterance = new SpeechSynthesisUtterance(text);
+        const selectedVoice = availableVoices.find(function (voice) { return voice.voiceURI === speechVoice.value; });
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          utterance.lang = selectedVoice.lang;
+        } else {
+          utterance.lang = 'en-US';
+        }
+        utterance.rate = Number(speechRate.value);
+        utterance.onend = function () {
+          if (currentUtterance !== utterance) return;
+          currentUtterance = null;
+          pauseButton.disabled = true;
+          pauseButton.textContent = 'Pause reading';
+          stopButton.disabled = true;
+          speechButton.disabled = !output.value.trim();
+          speechButton.textContent = 'Read aloud';
+          setStatus('Read aloud finished.');
+        };
+        utterance.onerror = function () {
+          if (currentUtterance !== utterance) return;
+          currentUtterance = null;
+          pauseButton.disabled = true;
+          stopButton.disabled = true;
+          speechButton.textContent = 'Read aloud';
+          setStatus('Speech could not be played. Check that this browser has a voice available.');
+        };
+        currentUtterance = utterance;
+        window.speechSynthesis.speak(utterance);
+        pauseButton.disabled = false;
+        stopButton.disabled = false;
+        speechButton.disabled = false;
+        speechButton.textContent = 'Reading…';
+        setStatus('Reading recognized text aloud.');
       }
 
       function drawImageToCanvas(source, width, height) {
@@ -728,7 +954,7 @@
 
       function scaleForOCR(source) {
         const longest = Math.max(source.width, source.height);
-        const scale = Math.min(3, Math.max(1, 2200 / longest));
+        const scale = Math.min(4, Math.max(1, 2200 / longest));
         const target = document.createElement('canvas');
         const scaledWidth = Math.max(1, Math.round(source.width * scale));
         const scaledHeight = Math.max(1, Math.round(source.height * scale));
@@ -832,8 +1058,8 @@
         return output;
       }
 
-      function flattenCurvedText(source) {
-        const strength = Number(curveStrength.value) / 100 * 1.05;
+      function flattenCurvedText(source, strengthPercent, archDirection) {
+        const strength = (Number(strengthPercent) || Number(curveStrength.value)) / 100 * 1.05;
         const flattened = document.createElement('canvas');
         flattened.width = source.width;
         flattened.height = source.height;
@@ -861,12 +1087,17 @@
           for (let x = 0; x < flattened.width; x += 1) {
             const normalizedX = (x - sourceHalfX) / sourceHalfX;
             const longitude = normalizedX * maxLongitude;
+            const rowSourceY = curveShape.value === 'arch'
+              ? Math.max(0, Math.min(source.height - 1,
+                Math.round(y + (archDirection || 1) * Math.min(source.height * 0.19, source.height * strength * 0.18)
+                  * (1 - normalizedX * normalizedX))))
+              : sourceY;
             const curvedX = curveShape.value === 'sphere'
               ? Math.sin(longitude) * horizontalScale / longitudeSine
-              : Math.sin(longitude) / longitudeSine;
+              : curveShape.value === 'cylinder' ? Math.sin(longitude) / longitudeSine : normalizedX;
             const sourceX = Math.max(0, Math.min(source.width - 1,
               Math.round(sourceHalfX + sourceHalfX * curvedX)));
-            const sourceIndex = (sourceY * source.width + sourceX) * 4;
+            const sourceIndex = (rowSourceY * source.width + sourceX) * 4;
             const outputIndex = (y * flattened.width + x) * 4;
             outputPixels[outputIndex] = sourcePixels[sourceIndex];
             outputPixels[outputIndex + 1] = sourcePixels[sourceIndex + 1];
@@ -879,15 +1110,72 @@
       }
 
       function rotateForOCR(source, degrees) {
-        const quarterTurn = Math.abs(degrees) % 180 === 90;
         const rotated = document.createElement('canvas');
-        rotated.width = quarterTurn ? source.height : source.width;
-        rotated.height = quarterTurn ? source.width : source.height;
+        const radians = degrees * Math.PI / 180;
+        const cosine = Math.cos(radians);
+        const sine = Math.sin(radians);
+        rotated.width = Math.max(1, Math.ceil(Math.abs(source.width * cosine) + Math.abs(source.height * sine)));
+        rotated.height = Math.max(1, Math.ceil(Math.abs(source.width * sine) + Math.abs(source.height * cosine)));
         const context = rotated.getContext('2d');
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, rotated.width, rotated.height);
         context.translate(rotated.width / 2, rotated.height / 2);
-        context.rotate(degrees * Math.PI / 180);
+        context.rotate(radians);
         context.drawImage(source, -source.width / 2, -source.height / 2);
         return rotated;
+      }
+
+      function estimateDeskewAngle(source) {
+        const analysis = document.createElement('canvas');
+        const scale = Math.min(1, 900 / Math.max(source.width, source.height));
+        analysis.width = Math.max(1, Math.round(source.width * scale));
+        analysis.height = Math.max(1, Math.round(source.height * scale));
+        const analysisContext = analysis.getContext('2d', { willReadFrequently: true });
+        analysisContext.drawImage(source, 0, 0, analysis.width, analysis.height);
+        const originalPixels = analysisContext.getImageData(0, 0, analysis.width, analysis.height).data;
+        let brightnessTotal = 0;
+        for (let index = 0; index < originalPixels.length; index += 4) {
+          brightnessTotal += 0.299 * originalPixels[index] + 0.587 * originalPixels[index + 1] + 0.114 * originalPixels[index + 2];
+        }
+        const lightBackground = brightnessTotal / (originalPixels.length / 4) >= 127;
+        const minX = Math.floor(analysis.width * 0.06);
+        const maxX = Math.ceil(analysis.width * 0.94);
+        const minY = Math.floor(analysis.height * 0.08);
+        const maxY = Math.ceil(analysis.height * 0.92);
+        let bestAngle = 0;
+        let bestScore = -1;
+        const rotated = document.createElement('canvas');
+        rotated.width = analysis.width;
+        rotated.height = analysis.height;
+        const rotatedContext = rotated.getContext('2d', { willReadFrequently: true });
+
+        for (let angle = -8; angle <= 8; angle += 1) {
+          rotatedContext.fillStyle = lightBackground ? '#fff' : '#000';
+          rotatedContext.fillRect(0, 0, rotated.width, rotated.height);
+          rotatedContext.save();
+          rotatedContext.translate(rotated.width / 2, rotated.height / 2);
+          rotatedContext.rotate(angle * Math.PI / 180);
+          rotatedContext.drawImage(analysis, -analysis.width / 2, -analysis.height / 2);
+          rotatedContext.restore();
+          const pixels = rotatedContext.getImageData(0, 0, rotated.width, rotated.height).data;
+          const rowCounts = new Uint32Array(maxY - minY);
+          for (let y = minY; y < maxY; y += 1) {
+            let count = 0;
+            for (let x = minX; x < maxX; x += 1) {
+              const pixel = (y * rotated.width + x) * 4;
+              const gray = 0.299 * pixels[pixel] + 0.587 * pixels[pixel + 1] + 0.114 * pixels[pixel + 2];
+              if (lightBackground ? gray < 135 : gray > 120) count += 1;
+            }
+            rowCounts[y - minY] = count;
+          }
+          const mean = rowCounts.reduce(function (sum, count) { return sum + count; }, 0) / rowCounts.length;
+          const score = rowCounts.reduce(function (sum, count) { return sum + Math.pow(count - mean, 2); }, 0) / rowCounts.length;
+          if (score > bestScore) {
+            bestScore = score;
+            bestAngle = angle;
+          }
+        }
+        return bestAngle;
       }
 
       async function loadTesseract() {
@@ -956,6 +1244,34 @@
         return text.toLocaleLowerCase().match(/[a-z0-9]+/g)?.join(' ') || '';
       }
 
+      function renderAlternativeReadings(candidates, bestText) {
+        const bestNormalized = normalizedText(bestText);
+        const seen = new Set([bestNormalized]);
+        const alternatives = [];
+        candidates.forEach(function (candidate) {
+          const normalized = normalizedText(candidate.text);
+          if (!normalized || seen.has(normalized)) return;
+          seen.add(normalized);
+          alternatives.push(candidate);
+        });
+        alternativeList.textContent = '';
+        alternatives.slice(0, 3).forEach(function (candidate, index) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = 'Use possible reading ' + (index + 2) + ': ' + candidate.text.replace(/\s+/g, ' ').slice(0, 110);
+          button.setAttribute('aria-label', 'Use alternative reading: ' + candidate.text.slice(0, 180));
+          button.addEventListener('click', function () {
+            output.value = candidate.text;
+            updateOutputControls();
+            setConfidence('Alternative OCR reading selected. Check it against the image.', 'warning');
+            setStatus('Alternative reading selected. You can edit it or read it aloud.');
+            if (autoRead.checked) speakOutput();
+          });
+          alternativeList.appendChild(button);
+        });
+        alternativeReadings.hidden = alternatives.length === 0;
+      }
+
       async function recognizeCandidate(activeWorker, image, label) {
         const result = await activeWorker.recognize(image);
         return {
@@ -978,6 +1294,7 @@
         captureButton.disabled = true;
         uploadButton.disabled = true;
         scanButton.textContent = 'Recognizing…';
+        output.setAttribute('aria-busy', 'true');
         setStatus('Preparing several image versions for reading.');
         setConfidence('Loading the on-device OCR engine…');
         try {
@@ -1003,12 +1320,33 @@
           if (original.width / original.height > 2.2) {
             await runCandidate(original, lineMode, 'original image · single text line');
           }
+          setStatus('Checking image alignment and reading alternatives…');
+          const deskewAngle = estimateDeskewAngle(original);
+          if (Math.abs(deskewAngle) >= 1) {
+            const straightened = rotateForOCR(original, deskewAngle);
+            await runCandidate(straightened, blockMode, 'auto-straightened ' + deskewAngle + '° · text block');
+            await runCandidate(enhanceForOCR(straightened), blockMode, 'auto-straightened ' + deskewAngle + '° · enhanced');
+          }
           if (curveEnabled.checked) {
-            const flattened = flattenCurvedText(original);
-            await runCandidate(flattened, blockMode, 'curved-print flattening · text block');
-            await runCandidate(enhanceForOCR(flattened), blockMode, 'curve flattening · contrast enhancement');
-            if (flattened.width / flattened.height > 2.2) {
-              await runCandidate(flattened, lineMode, 'curved-print flattening · single text line');
+            if (curveShape.value === 'arch') {
+              for (const direction of [-1, 1]) {
+                const flattened = flattenCurvedText(original, curveStrength.value, direction);
+                await runCandidate(flattened, blockMode, 'arched-line correction · direction ' + (direction < 0 ? 'one' : 'two'));
+              }
+            } else {
+              const chosenStrength = Number(curveStrength.value);
+              const strengths = Array.from(new Set([
+                Math.max(10, chosenStrength - 15),
+                chosenStrength,
+                Math.min(85, chosenStrength + 15)
+              ]));
+              for (const strength of strengths) {
+                const flattened = flattenCurvedText(original, strength);
+                await runCandidate(flattened, blockMode, 'curved-print correction · ' + strength + '% strength');
+                if (strength === chosenStrength) {
+                  await runCandidate(enhanceForOCR(flattened), blockMode, 'curve correction · enhanced');
+                }
+              }
             }
           }
 
@@ -1037,10 +1375,12 @@
           const methodsDisagree = distinctReadings.size > 1;
           if (!best || !best.text) {
             output.value = '';
+            alternativeReadings.hidden = true;
             setConfidence('No words found. Move closer, add light, or try a tighter text area.', 'warning');
             setStatus('No text found in the image. You can adjust the view and scan again.');
           } else {
             output.value = best.text;
+            renderAlternativeReadings(candidates, best.text);
             const scoreText = best.score >= 0 ? 'OCR engine score: ' + Math.round(best.score) + '/100; this does not guarantee exact text.' : 'Text detected.';
             let resultNote = methodsDisagree
               ? ' Recognition methods disagree; review the result carefully.'
@@ -1052,12 +1392,14 @@
             setConfidence(scoreText + resultNote, methodsDisagree || (best.score >= 0 && best.score < 62) ? 'warning' : undefined);
           }
           updateOutputControls();
+          if (output.value.trim() && autoRead.checked) speakOutput();
         } catch (error) {
           console.error(error);
           setConfidence(error && error.message ? error.message : 'The scan could not be completed.', 'warning');
           setStatus('Scan failed. Please try again.');
         } finally {
           isScanning = false;
+          output.removeAttribute('aria-busy');
           scanButton.textContent = 'Recognize text';
           scanButton.disabled = !frozen;
           captureButton.disabled = false;
@@ -1223,6 +1565,37 @@
         curveValue.textContent = curveValue.value;
       });
 
+      themeSelect.addEventListener('change', function () {
+        document.body.dataset.theme = themeSelect.value;
+        saveAccessibilityPreferences();
+      });
+      readerSize.addEventListener('input', function () {
+        readerSizeValue.value = readerSize.value + '%';
+        readerSizeValue.textContent = readerSizeValue.value;
+        output.style.fontSize = readerSize.value + '%';
+        saveAccessibilityPreferences();
+      });
+      readerSpacing.addEventListener('input', function () {
+        readerSpacingValue.value = Number(readerSpacing.value).toFixed(1) + '×';
+        readerSpacingValue.textContent = readerSpacingValue.value;
+        output.style.lineHeight = readerSpacing.value;
+        saveAccessibilityPreferences();
+      });
+      speechRate.addEventListener('input', function () {
+        speechRateValue.value = Number(speechRate.value).toFixed(1).replace(/\.0$/, '') + '×';
+        speechRateValue.textContent = speechRateValue.value;
+        if (currentUtterance) currentUtterance.rate = Number(speechRate.value);
+        saveAccessibilityPreferences();
+      });
+      speechVoice.addEventListener('change', saveAccessibilityPreferences);
+      autoRead.addEventListener('change', saveAccessibilityPreferences);
+      if ('speechSynthesis' in window) {
+        populateSpeechVoices();
+        window.speechSynthesis.addEventListener('voiceschanged', populateSpeechVoices);
+      } else {
+        speechVoice.disabled = true;
+      }
+
       uploadButton.addEventListener('click', function () { uploadInput.click(); });
       uploadInput.addEventListener('change', function () {
         const file = uploadInput.files && uploadInput.files[0];
@@ -1248,32 +1621,22 @@
         image.src = uploadedUrl;
       });
 
-      output.addEventListener('input', updateOutputControls);
-      speechButton.addEventListener('click', function () {
-        const text = output.value.trim();
-        if (!text || !('speechSynthesis' in window)) {
-          setStatus('Read aloud is not available in this browser.');
-          return;
+      output.addEventListener('input', function () {
+        if (currentUtterance) stopSpeech();
+        updateOutputControls();
+      });
+      speechButton.addEventListener('click', speakOutput);
+      pauseButton.addEventListener('click', function () {
+        if (!currentUtterance || !('speechSynthesis' in window)) return;
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+          pauseButton.textContent = 'Pause reading';
+          setStatus('Reading resumed.');
+        } else {
+          window.speechSynthesis.pause();
+          pauseButton.textContent = 'Resume reading';
+          setStatus('Reading paused.');
         }
-        stopSpeech();
-        currentUtterance = new SpeechSynthesisUtterance(text);
-        currentUtterance.lang = 'en-US';
-        currentUtterance.onend = function () {
-          currentUtterance = null;
-          stopButton.disabled = true;
-          speechButton.disabled = !output.value.trim();
-          speechButton.textContent = 'Read aloud';
-        };
-        currentUtterance.onerror = function () {
-          currentUtterance = null;
-          stopButton.disabled = true;
-          speechButton.textContent = 'Read aloud';
-          setStatus('Speech could not be played. Check that this browser has a voice available.');
-        };
-        window.speechSynthesis.speak(currentUtterance);
-        stopButton.disabled = false;
-        speechButton.disabled = false;
-        speechButton.textContent = 'Reading…';
       });
       stopButton.addEventListener('click', stopSpeech);
       copyButton.addEventListener('click', async function () {
@@ -1294,6 +1657,7 @@
         if (uploadedUrl) URL.revokeObjectURL(uploadedUrl);
       });
 
+      applyAccessibilityPreferences();
       updatePreview();
       updateOutputControls();
       setConfidence('Ready when you are.');
