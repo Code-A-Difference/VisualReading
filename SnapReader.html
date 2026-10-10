@@ -168,6 +168,23 @@
     #video { display: block; }
     #video[hidden] { display: none; }
     #canvas { display: none; }
+    .word-overlay { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+    .detected-region {
+      position: absolute;
+      min-width: 12px;
+      min-height: 12px;
+      padding: 0;
+      border: 3px solid #ffe04a;
+      border-radius: 5px;
+      color: transparent;
+      background: #ffe04a26;
+      pointer-events: auto;
+      touch-action: manipulation;
+      box-shadow: 0 0 0 1px #101d30;
+    }
+    .detected-region:hover:not(:disabled), .detected-region[aria-pressed="true"] { background: #ffe04a4d; }
+    .detected-region[aria-pressed="false"] { border-style: dashed; border-color: #71d8ff; background: #71d8ff12; }
+    .detected-region[aria-pressed="false"]:hover { background: #71d8ff30; }
     #freeze-overlay {
       position: absolute;
       z-index: 3;
@@ -198,6 +215,22 @@
       cursor: move;
     }
     #scan-region-box[hidden] { display: none; }
+    #detected-controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 8px 10px;
+      padding: 10px 12px;
+      border: 2px solid var(--line);
+      border-radius: 12px;
+      color: var(--ink);
+      background: var(--surface);
+    }
+    #detected-controls[hidden] { display: none; }
+    #detected-summary { margin: 0; font-weight: 750; }
+    #detected-controls button { min-height: 44px; padding: 7px 10px; }
+    body[data-theme="high-contrast"] .detected-region { border-color: #ffeb00; background: #ffeb0030; }
+    body[data-theme="high-contrast"] .detected-region[aria-pressed="false"] { border-color: #fff; background: #fff1; }
     #scan-label {
       position: absolute;
       top: 5px;
@@ -361,6 +394,8 @@
       .reader-heading { flex-direction: column; }
       .settings-grid { grid-template-columns: 1fr; }
       .speech-controls button { flex-basis: calc(50% - 8px); }
+      #detected-controls { grid-template-columns: 1fr 1fr; }
+      #detected-summary { grid-column: 1 / -1; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
@@ -386,6 +421,7 @@
           <div id="video-wrapper">
             <video id="video" autoplay muted playsinline aria-label="Live camera preview"></video>
             <canvas id="canvas" aria-label="Captured image"></canvas>
+            <div id="word-overlay" class="word-overlay" role="group" aria-label="Detected text areas. Each outlined area can be included or excluded from the next reading."></div>
           </div>
 
           <div id="scan-region-box" role="group" aria-label="Selected text area. Drag to move it. Use the corner handles or their arrow keys to resize." tabindex="0" hidden>
@@ -397,6 +433,12 @@
           </div>
           <div id="freeze-overlay" hidden>Image captured</div>
           <div class="viewer-hint" id="viewer-hint">Hold the camera steady and bring the print into view.</div>
+        </div>
+
+        <div id="detected-controls" hidden>
+          <p id="detected-summary" role="status" aria-live="polite"></p>
+          <button id="btn-select-all-regions" class="secondary" type="button">Select all text</button>
+          <button id="btn-clear-regions" class="quiet" type="button">Clear selection</button>
         </div>
 
         <div class="control-card">
@@ -452,10 +494,11 @@
             <ol>
               <li>Point the camera at the words and hold steady. Use magnification or select only the text area for small print. Slight camera tilt is corrected automatically.</li>
               <li>Capture the image, then choose <strong>Recognize text</strong>. You can also choose a picture.</li>
+              <li>After the scan, tap outlined lines to include or skip them. Keyboard users can tab to a line and press Enter or Space. Choose <strong>Read selected text</strong> to read only the lines you kept.</li>
               <li>For a ball, bottle, or arched line, open <strong>More image controls</strong>, enable <strong>Flatten curved print</strong>, and choose the closest shape. SnapReader compares several curve strengths.</li>
               <li>Review the result and any alternative readings, correct mistakes, then choose <strong>Read aloud</strong>. Use <strong>Reading and display settings</strong> to change contrast, text size, voice, and speaking speed.</li>
             </ol>
-            <p class="reader-note">Text recognition runs in your browser. The first scan needs an internet connection to load the English OCR engine.</p>
+            <p class="reader-note">Your picture stays in this browser. The first scan needs internet to download the English reading files.</p>
         </details>
         </div>
       </section>
@@ -464,13 +507,13 @@
         <div class="reader-heading">
           <div>
             <h2 id="reader-title">Recognized text</h2>
-            <p class="reader-note">The words appear here in a large, editable reading area.</p>
+            <p class="reader-note">The words appear here in a large, editable reading area. Lines outlined in the picture can be included or skipped.</p>
             <div id="confidence" aria-live="polite"><span id="confidence-text">Ready when you are.</span><span id="scan-progress" aria-hidden="true"></span></div>
           </div>
         </div>
         <div id="alternative-readings" class="alternative-readings" hidden aria-live="polite">
           <h3>Other possible readings</h3>
-          <p>OCR methods found different words. Compare these options with the image and select the closest reading.</p>
+          <p>Some words may have more than one possible reading. Compare each option with the picture and choose the closest one.</p>
           <div id="alternative-list" class="alternative-list"></div>
         </div>
         <label class="visually-hidden" for="recognized-text">Recognized text. Edit it to correct mistakes before reading aloud.</label>
@@ -513,7 +556,7 @@
             <p class="settings-help setting-row-full">Display and speech choices are saved on this device. Available voices depend on your browser and operating system.</p>
           </div>
         </details>
-        <p class="warning-note">Small, blurred, partly hidden, or curved print can be misread. The OCR score is not a measure of exactness. Check important words and numbers against the image.</p>
+        <p class="warning-note">Small, blurred, partly hidden, or curved print may be hard to read. Check important words and numbers against the picture.</p>
       </section>
     </div>
   </main>
@@ -528,6 +571,11 @@
       const wrapper = document.getElementById('video-wrapper');
       const viewer = document.getElementById('viewer-container');
       const selection = document.getElementById('scan-region-box');
+      const wordOverlay = document.getElementById('word-overlay');
+      const detectedControls = document.getElementById('detected-controls');
+      const detectedSummary = document.getElementById('detected-summary');
+      const selectAllRegionsButton = document.getElementById('btn-select-all-regions');
+      const clearRegionsButton = document.getElementById('btn-clear-regions');
       const status = document.getElementById('app-status');
       const hint = document.getElementById('viewer-hint');
       const confidenceLabel = document.getElementById('confidence');
@@ -591,6 +639,9 @@
       let isScanning = false;
       let currentUtterance = null;
       let isCapturing = false;
+      let detectedRegions = [];
+      let selectedRegionIds = new Set();
+      let scanStage = 'image';
       const sharpnessCanvas = document.createElement('canvas');
       const sharpnessContext = sharpnessCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -602,6 +653,102 @@
         confidenceText.textContent = message;
         scanProgress.textContent = '';
         confidenceLabel.style.color = kind === 'warning' ? 'var(--danger)' : 'var(--success)';
+      }
+
+      function cleanOCRText(value) {
+        const source = String(value || '')
+          .normalize('NFKC')
+          .replace(/[\u200B-\u200F\uFEFF\u00AD]/g, '')
+          .replace(/\r\n?/g, '\n');
+        return source.split('\n').map(function (line) {
+          return line.split(/\s+/).map(function (rawToken) {
+            const token = rawToken
+              .replace(/[^\p{L}\p{N}\s.,!?;:'"“”‘’()\-–—]/gu, ' ')
+              .trim();
+            const pieces = token.split(/\s+/).filter(Boolean);
+            return pieces.map(function (piece) {
+              const alphanumericCount = (piece.match(/[\p{L}\p{N}]/gu) || []).length;
+              if (!alphanumericCount || (piece.length > 3 && alphanumericCount / piece.length < 0.45)) return '';
+              return piece.replace(/^['"“”‘’.,!?;:()\-–—]+|['"“”‘’.,!?;:()\-–—]+$/g, '')
+                .replace(/[!?.,;:]{3,}/g, '.');
+            }).filter(Boolean).join(' ');
+          }).filter(Boolean).join(' ').replace(/\s+([,.;!?])/g, '$1').trim();
+        }).filter(Boolean).join('\n').trim();
+      }
+
+      function clearDetectedRegions() {
+        detectedRegions = [];
+        selectedRegionIds.clear();
+        scanStage = 'image';
+        wordOverlay.textContent = '';
+        detectedControls.hidden = true;
+        scanButton.textContent = 'Recognize text';
+      }
+
+      function updateDetectedSelection() {
+        const selectedCount = selectedRegionIds.size;
+        const totalCount = detectedRegions.length;
+        detectedSummary.textContent = selectedCount + ' of ' + totalCount + ' lines selected. Solid yellow lines will be read; dashed blue lines will be skipped. Tap a line to change it.';
+        Array.from(wordOverlay.querySelectorAll('.detected-region')).forEach(function (button) {
+          const id = Number(button.dataset.regionId);
+          const included = selectedRegionIds.has(id);
+          button.setAttribute('aria-pressed', String(included));
+          const text = detectedRegions[id] ? detectedRegions[id].text : '';
+          button.setAttribute('aria-label', 'Line ' + (id + 1) + ': ' + text + '. ' + (included ? 'Included. Activate to skip.' : 'Skipped. Activate to include.'));
+        });
+        scanButton.textContent = 'Read selected text';
+        scanButton.disabled = isScanning || !frozen || selectedCount === 0;
+        selectAllRegionsButton.disabled = selectedCount === totalCount;
+        clearRegionsButton.disabled = selectedCount === 0;
+      }
+
+      function renderDetectedRegions(regions) {
+        wordOverlay.textContent = '';
+        detectedRegions = regions.slice().sort(function (left, right) {
+          return left.top - right.top || left.left - right.left;
+        }).filter(function (region) {
+          return region.text && region.width > 1 && region.height > 1;
+        }).map(function (region, index) {
+          return Object.assign({ id: index }, region);
+        });
+        selectedRegionIds = new Set(detectedRegions.map(function (region) { return region.id; }));
+        if (!detectedRegions.length) {
+          detectedControls.hidden = true;
+          scanStage = 'image';
+          return;
+        }
+
+        const viewerWidth = viewer.clientWidth;
+        const viewerHeight = viewer.clientHeight;
+        const scale = Math.min(viewerWidth / canvas.width, viewerHeight / canvas.height);
+        const displayWidth = canvas.width * scale;
+        const displayHeight = canvas.height * scale;
+        const offsetX = (viewerWidth - displayWidth) / 2;
+        const offsetY = (viewerHeight - displayHeight) / 2;
+        detectedRegions.forEach(function (region) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'detected-region';
+          button.dataset.regionId = String(region.id);
+          button.title = region.text;
+          const targetHeight = Math.max(30, region.height * scale);
+          const targetWidth = Math.max(28, region.width * scale);
+          button.style.left = (offsetX + region.left * scale - Math.max(0, (targetWidth - region.width * scale) / 2)) + 'px';
+          button.style.top = (offsetY + region.top * scale - Math.max(0, (targetHeight - region.height * scale) / 2)) + 'px';
+          button.style.width = targetWidth + 'px';
+          button.style.height = targetHeight + 'px';
+          button.addEventListener('click', function (event) {
+            event.stopPropagation();
+            if (selectedRegionIds.has(region.id)) selectedRegionIds.delete(region.id);
+            else selectedRegionIds.add(region.id);
+            updateDetectedSelection();
+          });
+          wordOverlay.appendChild(button);
+        });
+        detectedControls.hidden = false;
+        scanStage = 'selecting';
+        hint.textContent = 'Review the outlined lines. Tap one to include or skip it.';
+        updateDetectedSelection();
       }
 
       function saveAccessibilityPreferences() {
@@ -660,7 +807,7 @@
       }
 
       function setScanReady(ready) {
-        scanButton.disabled = !ready || isScanning;
+        scanButton.disabled = !ready || isScanning || (scanStage === 'selecting' && selectedRegionIds.size === 0);
         captureButton.disabled = frozen || !stream;
         captureButton.hidden = frozen;
         retakeButton.hidden = !frozen;
@@ -807,6 +954,7 @@
       }
 
       function drawImageToCanvas(source, width, height) {
+        clearDetectedRegions();
         const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
         canvas.width = Math.max(1, Math.round(width * scale));
         canvas.height = Math.max(1, Math.round(height * scale));
@@ -821,7 +969,7 @@
           : 'Image captured. Choose “Recognize text” when you are ready.';
         selection.hidden = !selectArea;
         setScanReady(true);
-        setStatus('Image captured at ' + canvas.width + ' × ' + canvas.height + '.');
+        setStatus('Image captured. Choose Recognize text when you are ready.');
       }
 
       function measureSharpness(source) {
@@ -903,6 +1051,7 @@
       }
 
       function retake() {
+        clearDetectedRegions();
         frozen = false;
         document.getElementById('freeze-overlay').hidden = true;
         selection.hidden = true;
@@ -923,7 +1072,10 @@
 
       function getSourceCrop() {
         if (!canvas.width || !canvas.height) return null;
-        if (!selectArea || selection.hidden) return canvas;
+        if (!selectArea || selection.hidden) {
+          canvas.sourceMapping = { left: 0, top: 0, width: canvas.width, height: canvas.height };
+          return canvas;
+        }
 
         const imageRect = canvas.getBoundingClientRect();
         const boxRect = selection.getBoundingClientRect();
@@ -949,6 +1101,7 @@
         crop.width = Math.max(1, Math.round(sw));
         crop.height = Math.max(1, Math.round(sh));
         crop.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
+        crop.sourceMapping = { left: sx, top: sy, width: sw, height: sh };
         return crop;
       }
 
@@ -967,6 +1120,18 @@
         targetContext.imageSmoothingEnabled = true;
         targetContext.imageSmoothingQuality = 'high';
         targetContext.drawImage(source, border, border, scaledWidth, scaledHeight);
+        target.sourceMapping = source.sourceMapping || { left: 0, top: 0, width: source.width, height: source.height };
+        target.ocrScaleX = scaledWidth / source.width;
+        target.ocrScaleY = scaledHeight / source.height;
+        target.ocrBorder = border;
+        return target;
+      }
+
+      function inheritSourceMapping(source, target) {
+        if (source.sourceMapping) target.sourceMapping = source.sourceMapping;
+        if (Number.isFinite(source.ocrScaleX)) target.ocrScaleX = source.ocrScaleX;
+        if (Number.isFinite(source.ocrScaleY)) target.ocrScaleY = source.ocrScaleY;
+        if (Number.isFinite(source.ocrBorder)) target.ocrBorder = source.ocrBorder;
         return target;
       }
 
@@ -1004,7 +1169,7 @@
           pixels[i + 2] = adjusted;
         }
         enhancedContext.putImageData(image, 0, 0);
-        return enhanced;
+        return inheritSourceMapping(source, enhanced);
       }
 
       function adaptiveThresholdForOCR(source) {
@@ -1055,7 +1220,7 @@
           }
         }
         outputContext.putImageData(image, 0, 0);
-        return output;
+        return inheritSourceMapping(source, output);
       }
 
       function flattenCurvedText(source, strengthPercent, archDirection) {
@@ -1210,7 +1375,7 @@
             logger: function (message) {
               if (!isScanning || !message) return;
               if (typeof message.progress === 'number') {
-                const step = message.status === 'recognizing text' ? 'Reading image' : 'Preparing OCR';
+                const step = message.status === 'recognizing text' ? 'Reading text' : 'Preparing image';
                 scanProgress.textContent = ' · ' + step + ' ' + Math.round(message.progress * 100) + '%';
               }
             }
@@ -1244,6 +1409,67 @@
         return text.toLocaleLowerCase().match(/[a-z0-9]+/g)?.join(' ') || '';
       }
 
+      function textRegionsFromResult(data, image) {
+        if (!image.sourceMapping) return [];
+        const mapping = image.sourceMapping || { left: 0, top: 0, width: image.width, height: image.height };
+        const border = image.ocrBorder || 0;
+        const scaledWidth = image.width - border * 2;
+        const scaledHeight = image.height - border * 2;
+        const scaleX = mapping.width / Math.max(1, scaledWidth);
+        const scaleY = mapping.height / Math.max(1, scaledHeight);
+        let lines = (data.lines || []).filter(function (line) {
+          return line.text && line.bbox && Number.isFinite(line.bbox.x0) && Number.isFinite(line.bbox.y0)
+            && Number.isFinite(line.bbox.x1) && Number.isFinite(line.bbox.y1);
+        });
+
+        if (!lines.length) {
+          const words = (data.words || []).filter(function (word) {
+            return word.text && word.bbox && Number.isFinite(word.bbox.x0) && Number.isFinite(word.bbox.y0)
+              && Number.isFinite(word.bbox.x1) && Number.isFinite(word.bbox.y1);
+          }).sort(function (left, right) { return left.bbox.y0 - right.bbox.y0 || left.bbox.x0 - right.bbox.x0; });
+          const groups = [];
+          words.forEach(function (word) {
+            const centerY = (word.bbox.y0 + word.bbox.y1) / 2;
+            const group = groups.find(function (item) {
+              return Math.abs(item.centerY - centerY) <= Math.max(8, (word.bbox.y1 - word.bbox.y0) * 0.6);
+            });
+            if (group) {
+              group.words.push(word);
+              group.centerY = (group.centerY * (group.words.length - 1) + centerY) / group.words.length;
+            } else {
+              groups.push({ centerY: centerY, words: [word] });
+            }
+          });
+          lines = groups.map(function (group) {
+            const groupWords = group.words.sort(function (left, right) { return left.bbox.x0 - right.bbox.x0; });
+            return {
+              text: groupWords.map(function (word) { return word.text; }).join(' '),
+              bbox: {
+                x0: Math.min.apply(null, groupWords.map(function (word) { return word.bbox.x0; })),
+                y0: Math.min.apply(null, groupWords.map(function (word) { return word.bbox.y0; })),
+                x1: Math.max.apply(null, groupWords.map(function (word) { return word.bbox.x1; })),
+                y1: Math.max.apply(null, groupWords.map(function (word) { return word.bbox.y1; }))
+              }
+            };
+          });
+        }
+
+        return lines.map(function (line) {
+          const bbox = line.bbox;
+          const left = Math.max(0, mapping.left + (bbox.x0 - border) * scaleX);
+          const top = Math.max(0, mapping.top + (bbox.y0 - border) * scaleY);
+          const right = Math.min(canvas.width, mapping.left + (bbox.x1 - border) * scaleX);
+          const bottom = Math.min(canvas.height, mapping.top + (bbox.y1 - border) * scaleY);
+          return {
+            text: cleanOCRText(line.text),
+            left: left,
+            top: top,
+            width: Math.max(0, right - left),
+            height: Math.max(0, bottom - top)
+          };
+        }).filter(function (region) { return region.text && region.width > 0 && region.height > 0; });
+      }
+
       function renderAlternativeReadings(candidates, bestText) {
         const bestNormalized = normalizedText(bestText);
         const seen = new Set([bestNormalized]);
@@ -1263,7 +1489,7 @@
           button.addEventListener('click', function () {
             output.value = candidate.text;
             updateOutputControls();
-            setConfidence('Alternative OCR reading selected. Check it against the image.', 'warning');
+            setConfidence('Another possible reading is selected. Check it against the picture.', 'warning');
             setStatus('Alternative reading selected. You can edit it or read it aloud.');
             if (autoRead.checked) speakOutput();
           });
@@ -1274,17 +1500,90 @@
 
       async function recognizeCandidate(activeWorker, image, label) {
         const result = await activeWorker.recognize(image);
+        const text = cleanOCRText(result.data.text || '');
         return {
-          text: (result.data.text || '').trim(),
+          text: text,
           score: resultScore(result.data),
+          wordCount: (text.match(/[\p{L}\p{N}]+/gu) || []).length,
+          regions: textRegionsFromResult(result.data, image),
           label: label
         };
       }
 
+      function cropDetectedRegion(region) {
+        const padX = Math.max(10, region.width * 0.1);
+        const padY = Math.max(10, region.height * 0.45);
+        const left = Math.max(0, Math.floor(region.left - padX));
+        const top = Math.max(0, Math.floor(region.top - padY));
+        const right = Math.min(canvas.width, Math.ceil(region.left + region.width + padX));
+        const bottom = Math.min(canvas.height, Math.ceil(region.top + region.height + padY));
+        const crop = document.createElement('canvas');
+        crop.width = Math.max(1, right - left);
+        crop.height = Math.max(1, bottom - top);
+        const cropContext = crop.getContext('2d', { willReadFrequently: true });
+        cropContext.fillStyle = '#fff';
+        cropContext.fillRect(0, 0, crop.width, crop.height);
+        cropContext.drawImage(canvas, left, top, crop.width, crop.height, 0, 0, crop.width, crop.height);
+        return scaleForOCR(crop);
+      }
+
+      async function readSelectedRegions(activeWorker) {
+        const selected = detectedRegions
+          .filter(function (region) { return selectedRegionIds.has(region.id); })
+          .slice()
+          .sort(function (left, right) { return left.top - right.top || left.left - right.left; });
+        const psm = window.Tesseract.PSM || {};
+        const lineMode = psm.SINGLE_LINE === undefined ? 7 : psm.SINGLE_LINE;
+        const readLines = [];
+
+        for (let index = 0; index < selected.length; index += 1) {
+          const region = selected[index];
+          setStatus('Reading selected line ' + (index + 1) + ' of ' + selected.length + '.');
+          const lineImage = cropDetectedRegion(region);
+          const versions = [lineImage, enhanceForOCR(lineImage), adaptiveThresholdForOCR(lineImage)];
+          if (curveEnabled.checked) {
+            if (curveShape.value === 'arch') {
+              versions.push(flattenCurvedText(lineImage, curveStrength.value, -1));
+              versions.push(flattenCurvedText(lineImage, curveStrength.value, 1));
+            } else {
+              versions.push(flattenCurvedText(lineImage, curveStrength.value));
+            }
+          }
+
+          const readings = [{
+            text: region.text,
+            score: -1,
+            wordCount: (region.text.match(/[\p{L}\p{N}]+/gu) || []).length,
+            rankScore: -1
+          }];
+          for (let versionIndex = 0; versionIndex < versions.length; versionIndex += 1) {
+            await activeWorker.setParameters({
+              preserve_interword_spaces: '1',
+              tessedit_pageseg_mode: lineMode,
+              user_defined_dpi: '300'
+            });
+            const result = await activeWorker.recognize(versions[versionIndex]);
+            const text = cleanOCRText(result.data.text || '');
+            if (!text) continue;
+            const wordCount = (text.match(/[\p{L}\p{N}]+/gu) || []).length;
+            readings.push({
+              text: text,
+              score: resultScore(result.data),
+              wordCount: wordCount,
+              rankScore: resultScore(result.data) + Math.min(12, wordCount * 2.5)
+            });
+          }
+          readings.sort(function (left, right) { return right.rankScore - left.rankScore; });
+          if (readings[0] && readings[0].text) readLines.push(readings[0].text);
+        }
+        return cleanOCRText(readLines.join('\n'));
+      }
+
       async function recognizeText() {
         if (!frozen || isScanning) return;
-        const crop = getSourceCrop();
-        if (!crop) {
+        const selectingRegions = scanStage === 'selecting';
+        const crop = selectingRegions ? null : getSourceCrop();
+        if (!selectingRegions && !crop) {
           setStatus('The selected area is outside the image. Move it over the words and try again.');
           return;
         }
@@ -1295,12 +1594,27 @@
         uploadButton.disabled = true;
         scanButton.textContent = 'Recognizing…';
         output.setAttribute('aria-busy', 'true');
-        setStatus('Preparing several image versions for reading.');
-        setConfidence('Loading the on-device OCR engine…');
+        setStatus(selectingRegions ? 'Reading the lines you selected…' : 'Looking for text in the picture…');
+        setConfidence('Getting ready to read the picture…');
         try {
           const activeWorker = await getWorker();
+          if (selectingRegions) {
+            const selectedText = await readSelectedRegions(activeWorker);
+            if (selectedText) {
+              output.value = selectedText;
+              setConfidence('Selected lines are ready. Check them against the picture.');
+              setStatus('Selected lines are ready. You can edit them or read them aloud.');
+            } else {
+              setConfidence('No words could be read from the selected lines. Try including more of each line.', 'warning');
+              setStatus('The selected lines could not be read. Adjust your selection and try again.');
+            }
+            updateOutputControls();
+            if (output.value.trim() && autoRead.checked) speakOutput();
+            return;
+          }
           const original = scaleForOCR(crop);
           const psm = window.Tesseract.PSM || {};
+          const automaticMode = psm.AUTO === undefined ? 3 : psm.AUTO;
           const blockMode = psm.SINGLE_BLOCK === undefined ? 6 : psm.SINGLE_BLOCK;
           const sparseMode = psm.SPARSE_TEXT === undefined ? 11 : psm.SPARSE_TEXT;
           const lineMode = psm.SINGLE_LINE === undefined ? 7 : psm.SINGLE_LINE;
@@ -1313,6 +1627,7 @@
             });
             candidates.push(await recognizeCandidate(activeWorker, image, label));
           };
+          await runCandidate(original, automaticMode, 'whole picture');
           await runCandidate(original, blockMode, 'original image · text block');
           await runCandidate(enhanceForOCR(original), blockMode, 'contrast enhancement · text block');
           await runCandidate(adaptiveThresholdForOCR(original), blockMode, 'local contrast · text block');
@@ -1320,7 +1635,7 @@
           if (original.width / original.height > 2.2) {
             await runCandidate(original, lineMode, 'original image · single text line');
           }
-          setStatus('Checking image alignment and reading alternatives…');
+          setStatus('Checking the picture for more text…');
           const deskewAngle = estimateDeskewAngle(original);
           if (Math.abs(deskewAngle) >= 1) {
             const straightened = rotateForOCR(original, deskewAngle);
@@ -1360,12 +1675,16 @@
             }
           }
 
+          const mostWords = Math.max.apply(null, candidates.map(function (candidate) { return candidate.wordCount; }));
           candidates.forEach(function (candidate) {
             const candidateText = normalizedText(candidate.text);
             const agreement = candidateText
               ? candidates.filter(function (other) { return normalizedText(other.text) === candidateText; }).length
               : 0;
-            candidate.rankScore = candidate.score + Math.max(0, agreement - 1) * 2;
+            const coverage = mostWords ? candidate.wordCount / mostWords : 0;
+            candidate.rankScore = candidate.text
+              ? candidate.score * 0.45 + coverage * 55 + Math.max(0, agreement - 1) * 2
+              : -100;
           });
           candidates.sort(function (left, right) { return right.rankScore - left.rankScore; });
           const best = candidates[0];
@@ -1376,34 +1695,34 @@
           if (!best || !best.text) {
             output.value = '';
             alternativeReadings.hidden = true;
+            clearDetectedRegions();
             setConfidence('No words found. Move closer, add light, or try a tighter text area.', 'warning');
             setStatus('No text found in the image. You can adjust the view and scan again.');
           } else {
             output.value = best.text;
             renderAlternativeReadings(candidates, best.text);
-            const scoreText = best.score >= 0 ? 'OCR engine score: ' + Math.round(best.score) + '/100; this does not guarantee exact text.' : 'Text detected.';
-            let resultNote = methodsDisagree
-              ? ' Recognition methods disagree; review the result carefully.'
-              : ' Best result: ' + best.label + '. Check the words against the image.';
-            setStatus('Text recognized. Review it or choose Read aloud.');
-            if (best.score >= 0 && best.score < 62) {
-              resultNote += ' Try more light, a closer view, or curved-print flattening.';
-            }
-            setConfidence(scoreText + resultNote, methodsDisagree || (best.score >= 0 && best.score < 62) ? 'warning' : undefined);
+            const regionCandidates = candidates.filter(function (candidate) { return candidate.regions.length > 0; });
+            regionCandidates.sort(function (left, right) {
+              return right.regions.length - left.regions.length || right.score - left.score;
+            });
+            renderDetectedRegions(regionCandidates.length ? regionCandidates[0].regions : []);
+            const needsReview = methodsDisagree || (best.score >= 0 && best.score < 62);
+            setConfidence(needsReview ? 'Text is ready. Some words may need correction; check them against the picture.' : 'Text is ready. Check it against the picture.', needsReview ? 'warning' : undefined);
+            setStatus(detectedRegions.length
+              ? 'Text found. Tap outlined lines to choose what to read, then choose “Read selected text.”'
+              : 'Text recognized. Review it or choose Read aloud.');
           }
           updateOutputControls();
           if (output.value.trim() && autoRead.checked) speakOutput();
         } catch (error) {
           console.error(error);
-          setConfidence(error && error.message ? error.message : 'The scan could not be completed.', 'warning');
-          setStatus('Scan failed. Please try again.');
+          setConfidence('I could not read this picture. Check your connection, then try a closer, brighter image.', 'warning');
+          setStatus('The picture could not be read. Please try again.');
         } finally {
           isScanning = false;
           output.removeAttribute('aria-busy');
-          scanButton.textContent = 'Recognize text';
-          scanButton.disabled = !frozen;
-          captureButton.disabled = false;
-          uploadButton.disabled = false;
+          scanButton.textContent = scanStage === 'selecting' ? 'Read selected text' : 'Recognize text';
+          setScanReady(frozen);
         }
       }
 
@@ -1457,6 +1776,7 @@
       }
 
       viewer.addEventListener('pointerdown', function (event) {
+        if (event.target.closest('.detected-region')) return;
         if (!frozen || !selectArea) {
           if (!frozen) return;
           panning = true;
@@ -1546,7 +1866,16 @@
       captureButton.addEventListener('click', captureFrame);
       retakeButton.addEventListener('click', retake);
       scanButton.addEventListener('click', recognizeText);
+      selectAllRegionsButton.addEventListener('click', function () {
+        selectedRegionIds = new Set(detectedRegions.map(function (region) { return region.id; }));
+        updateDetectedSelection();
+      });
+      clearRegionsButton.addEventListener('click', function () {
+        selectedRegionIds.clear();
+        updateDetectedSelection();
+      });
       areaButton.addEventListener('click', function () {
+        if (detectedRegions.length) clearDetectedRegions();
         selectArea = !selectArea;
         updateSelectionState();
       });
@@ -1610,7 +1939,7 @@
         image.onload = function () {
           sourceKind = 'file';
           drawImageToCanvas(image, image.naturalWidth, image.naturalHeight);
-          setStatus('Picture loaded at ' + canvas.width + ' × ' + canvas.height + '.');
+          setStatus('Picture loaded. Choose Recognize text when you are ready.');
           uploadInput.value = '';
         };
         image.onerror = function () {
