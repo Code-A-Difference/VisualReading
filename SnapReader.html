@@ -1,1454 +1,721 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f4f6fa">
-  <title>SnapReader | Accessible camera reader</title>
-  <meta name="description" content="Magnify, capture, recognize and read printed text aloud in your browser.">
-  <style>
-    :root {
-      color-scheme: light;
-      --page: #f2f5f9;
-      --surface: #ffffff;
-      --ink: #132238;
-      --muted: #43536a;
-      --line: #c7d1df;
-      --navy: #15345b;
-      --blue: #164f9b;
-      --blue-dark: #0d3977;
-      --yellow: #ffdb4d;
-      --focus: #005fcc;
-      --success: #155d38;
-      --danger: #8a1f25;
-      --radius: 18px;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>Visual Reading | See and hear any text</title>
+<meta name="description" content="Point your camera at any text. Zoom in, change the contrast, and have it read aloud with each word highlighted. Free, private, runs in your browser.">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115; --panel: #181b22; --ink: #f4f1ea; --mute: #bcc3cf; --line: #3a414d;
+    --accent: #ffd166; --on-accent: #1a1400; --danger: #ff8a80; --stage: #000;
+    --sans: "Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    --fs: 30px;
+    --gap: 8px;
+  }
+  html[data-theme="light"] { color-scheme: light; --bg: #f6f4ef; --panel: #ffffff; --ink: #16181d; --mute: #444b57; --line: #8c93a0; --accent: #0b4fc4; --on-accent: #ffffff; --danger: #b00020; }
+  html[data-theme="contrast"] { --bg: #000; --panel: #000; --ink: #ffee00; --mute: #ffffff; --line: #ffee00; --accent: #ffee00; --on-accent: #000; --danger: #ff8a80; }
+  html[data-theme="cream"] { color-scheme: light; --bg: #f3e7cc; --panel: #fbf3df; --ink: #25221b; --mute: #4a4538; --line: #8a7f63; --accent: #8a3b00; --on-accent: #ffffff; --danger: #a40000; }
+  html[data-spacing="wide"] #flow { letter-spacing: .06em; word-spacing: .22em; line-height: 1.85; }
 
-    body[data-theme="dark"] {
-      color-scheme: dark;
-      --page: #101722;
-      --surface: #1b2736;
-      --ink: #f2f6fb;
-      --muted: #c2cee0;
-      --line: #596b81;
-      --navy: #e7f0ff;
-      --blue: #2b69b8;
-      --blue-dark: #1d4f91;
-      --focus: #ffd84d;
-      --success: #a6e5bd;
-      --danger: #ffb6b9;
-    }
-    body[data-theme="high-contrast"] {
-      color-scheme: dark;
-      --page: #000;
-      --surface: #000;
-      --ink: #fff;
-      --muted: #fff;
-      --line: #fff;
-      --navy: #ffeb00;
-      --blue: #ffeb00;
-      --blue-dark: #fff;
-      --focus: #ffeb00;
-      --success: #fff;
-      --danger: #ffeb00;
-    }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-tap-highlight-color: transparent; }
+  /* the parent site's reading-size option would zoom the whole body and push the layout off screen; this tool sizes itself */
+  html[data-scale] body { zoom: 1 !important; }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .skip { position: absolute; left: 8px; top: -80px; z-index: 50; padding: 12px 16px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 700; }
+  .skip:focus { top: 8px; }
 
-    * { box-sizing: border-box; }
-    body {
-      min-width: 320px;
-      min-height: 100vh;
-      min-height: 100svh;
-      margin: 0;
-      color: var(--ink);
-      background: var(--page);
-      font-size: 18px;
-      line-height: 1.5;
-    }
-    button, input, textarea { font: inherit; }
-    button {
-      min-height: 52px;
-      border: 2px solid transparent;
-      border-radius: 12px;
-      padding: 10px 16px;
-      color: #fff;
-      background: var(--blue);
-      font-weight: 750;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-    button:hover:not(:disabled) { background: var(--blue-dark); }
-    button:disabled { color: #d2dae5; background: #56677d; cursor: not-allowed; }
-    button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible,
-    [tabindex]:focus-visible {
-      outline: 4px solid var(--focus);
-      outline-offset: 3px;
-    }
-    .secondary {
-      color: var(--navy);
-      background: #edf3fb;
-      border-color: #9eafc4;
-    }
-    body[data-theme="dark"] .secondary { color: var(--ink); background: #26384d; border-color: #8295ad; }
-    body[data-theme="dark"] .secondary:hover:not(:disabled),
-    body[data-theme="dark"] .quiet:hover:not(:disabled) { color: #101722; background: #e7f0ff; }
-    body[data-theme="high-contrast"] button { color: #000; border-color: #ffeb00; }
-    body[data-theme="high-contrast"] .secondary,
-    body[data-theme="high-contrast"] .quiet { color: #ffeb00; background: #000; border-color: #ffeb00; }
-    body[data-theme="high-contrast"] .secondary:hover:not(:disabled),
-    body[data-theme="high-contrast"] .quiet:hover:not(:disabled) { color: #000; background: #ffeb00; }
-    body[data-theme="high-contrast"] .capture-button,
-    body[data-theme="high-contrast"] .scan-button { color: #000; background: #ffeb00; }
-    body[data-theme="high-contrast"] .capture-button:hover:not(:disabled),
-    body[data-theme="high-contrast"] .scan-button:hover:not(:disabled) { color: #000; background: #fff; }
-    body[data-theme="dark"] .brand-mark { color: #fff; background: var(--blue-dark); }
-    body[data-theme="high-contrast"] .brand-mark { color: #000; background: #ffeb00; }
-    .secondary:hover:not(:disabled) { color: #fff; background: var(--navy); }
-    .quiet {
-      color: var(--navy);
-      background: transparent;
-      border-color: var(--line);
-    }
-    .quiet:hover:not(:disabled) { color: #fff; background: var(--navy); }
-    .app-shell { width: min(1440px, 100%); margin: 0 auto; padding: 18px clamp(14px, 2.5vw, 34px) 30px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
-    .brand { display: flex; align-items: center; gap: 14px; }
-    .brand-mark {
-      display: grid;
-      width: 54px;
-      height: 54px;
-      flex: 0 0 54px;
-      place-items: center;
-      border-radius: 16px;
-      color: #fff;
-      background: var(--navy);
-      font-size: 30px;
-    }
-    h1 { margin: 0; color: var(--navy); font-size: clamp(1.55rem, 3vw, 2.15rem); line-height: 1.1; }
-    .tagline { margin: 4px 0 0; color: var(--muted); font-size: 1rem; }
-    #app-status {
-      max-width: 370px;
-      padding: 8px 13px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      color: var(--navy);
-      background: var(--surface);
-      font-size: .95rem;
-      font-weight: 700;
-      text-align: center;
-    }
-    .workspace { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(340px, .85fr); align-items: stretch; gap: 18px; }
-    .capture-column { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
-    .viewer-container {
-      position: relative;
-      min-height: 360px;
-      height: min(62svh, 760px);
-      overflow: hidden;
-      border: 2px solid #0d2038;
-      border-radius: var(--radius);
-      background: #081422;
-      isolation: isolate;
-    }
-    #video-wrapper {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      transform-origin: center center;
-      touch-action: pan-y;
-      will-change: transform;
-    }
-    #video, #canvas {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      pointer-events: none;
-    }
-    #video { display: block; }
-    #video[hidden] { display: none; }
-    #canvas { display: none; }
-    #freeze-overlay {
-      position: absolute;
-      z-index: 3;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 6px 13px;
-      border: 1px solid #fff;
-      border-radius: 999px;
-      color: #fff;
-      background: #162e4ce8;
-      font-size: .92rem;
-      font-weight: 800;
-      white-space: nowrap;
-      pointer-events: none;
-    }
-    #scan-region-box {
-      position: absolute;
-      z-index: 4;
-      top: 29%;
-      left: 6%;
-      width: 88%;
-      height: 42%;
-      border: 4px dotted var(--yellow);
-      border-radius: 10px;
-      outline: 2px solid #101d30;
-      outline-offset: 2px;
-      background: #ffdb4d12;
-      box-shadow: 0 0 0 9999px #07111c45, inset 0 0 0 1px #101d30;
-      touch-action: none;
-      cursor: move;
-    }
-    #scan-region-box[hidden] { display: none; }
-    #scan-label {
-      position: absolute;
-      top: 5px;
-      left: 50%;
-      max-width: calc(100% - 18px);
-      transform: translateX(-50%);
-      padding: 3px 9px;
-      border: 1px solid #132238;
-      border-radius: 7px;
-      color: #102038;
-      background: var(--yellow);
-      font-size: .82rem;
-      font-weight: 800;
-      line-height: 1.3;
-      text-align: center;
-      white-space: nowrap;
-      pointer-events: none;
-    }
-    .handle {
-      position: absolute;
-      z-index: 2;
-      width: 34px;
-      height: 34px;
-      min-height: 34px;
-      padding: 0;
-      border: 3px solid #14243b;
-      border-radius: 50%;
-      background: var(--yellow);
-      touch-action: none;
-    }
-    .handle:hover:not(:disabled) { background: #fff1a6; }
-    .handle-nw { top: -18px; left: -18px; cursor: nwse-resize; }
-    .handle-ne { top: -18px; right: -18px; cursor: nesw-resize; }
-    .handle-sw { bottom: -18px; left: -18px; cursor: nesw-resize; }
-    .handle-se { bottom: -18px; right: -18px; cursor: nwse-resize; }
-    .viewer-hint {
-      position: absolute;
-      right: 12px;
-      bottom: 12px;
-      left: 12px;
-      z-index: 3;
-      color: #fff;
-      font-size: .93rem;
-      font-weight: 700;
-      text-align: center;
-      text-shadow: 0 1px 4px #000;
-      pointer-events: none;
-    }
-    .camera-controls, .action-row, .speech-controls, .tools-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .camera-controls button, .action-row button { flex: 1 1 180px; }
-    .control-card, .reader-panel {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--surface);
-      box-shadow: 0 4px 18px #14243b0b;
-    }
-    .control-card { padding: 14px; }
-    .action-row { margin-bottom: 10px; }
-    .capture-button { background: #155d38; }
-    .capture-button:hover:not(:disabled) { background: #0f472b; }
-    .scan-button { background: #553598; }
-    .scan-button:hover:not(:disabled) { background: #3d2671; }
-    .sub-controls { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px 16px; }
-    .range-wrap { display: flex; min-width: 0; align-items: center; gap: 12px; }
-    .range-wrap label { font-weight: 750; }
-    input[type="range"] { width: 100%; min-width: 100px; height: 30px; accent-color: var(--blue); }
-    output { min-width: 3.5em; color: var(--navy); font-weight: 800; text-align: right; }
-    details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; }
-    summary { width: fit-content; min-height: 42px; padding: 6px 3px; color: var(--blue-dark); font-weight: 800; cursor: pointer; }
-    .advanced-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 8px 0 2px; }
-    .advanced-grid button { min-height: 46px; }
-    .option-line { display: flex; min-height: 46px; align-items: center; gap: 10px; color: var(--ink); font-weight: 700; }
-    .option-line input { width: 22px; height: 22px; accent-color: var(--blue); }
-    .option-line select, .setting-row select { min-height: 44px; max-width: 100%; border: 2px solid var(--line); border-radius: 8px; padding: 6px 9px; color: var(--ink); background: var(--surface); }
-    .help { margin-top: 9px; color: var(--muted); font-size: .98rem; }
-    .help summary { min-height: 36px; }
-    .help ol { margin: 8px 0 2px; padding-left: 26px; }
-    .help li + li { margin-top: 5px; }
-    .reader-panel { display: flex; min-width: 0; min-height: 500px; flex-direction: column; padding: clamp(14px, 2vw, 22px); }
-    .reader-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-    h2 { margin: 0; color: var(--navy); font-size: 1.35rem; line-height: 1.25; }
-    .reader-note { margin: 5px 0 0; color: var(--muted); font-size: .94rem; }
-    #confidence { margin-top: 8px; color: var(--success); font-size: .94rem; font-weight: 800; }
-    #recognized-text {
-      display: block;
-      width: 100%;
-      min-height: 270px;
-      flex: 1;
-      resize: vertical;
-      border: 2px solid #8b9bb0;
-      border-radius: 12px;
-      padding: 16px;
-      color: var(--ink);
-      background: var(--surface);
-      font-size: clamp(1.35rem, 2vw, 1.9rem);
-      font-weight: 650;
-      line-height: 1.55;
-    }
-    #recognized-text::placeholder { color: #526176; font-size: 1.05rem; font-weight: 500; }
-    .speech-controls { margin-top: 12px; }
-    .speech-controls button { flex: 1 1 135px; }
-    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; padding: 8px 0 2px; }
-    .setting-row { display: grid; min-width: 0; gap: 5px; color: var(--ink); font-weight: 700; }
-    .setting-row input[type="range"] { width: 100%; min-height: 32px; accent-color: var(--blue); }
-    .setting-row output { text-align: left; }
-    .setting-row-full { grid-column: 1 / -1; }
-    .settings-help { margin: 0; color: var(--muted); font-size: .9rem; }
-    body[data-theme="dark"] #recognized-text::placeholder { color: #c2cee0; }
-    body[data-theme="high-contrast"] #recognized-text::placeholder { color: #ffeb00; }
-    .alternative-list button { min-height: 44px; color: var(--ink); background: var(--surface); border-color: var(--line); text-align: left; }
-    .alternative-list button:hover { color: #fff; background: var(--navy); }
-    body[data-theme="high-contrast"] .alternative-list button { color: #ffeb00; background: #000; }
-    body[data-theme="high-contrast"] .alternative-list button:hover { color: #000; background: #ffeb00; }
-    body[data-theme="high-contrast"] #recognized-text { border-color: #fff; }
-    .warning-note { margin: 11px 0 0; color: var(--muted); font-size: .88rem; }
-    .visually-hidden {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      clip-path: inset(50%);
-    }
+  /* ---------- the whole app is one screen: nothing scrolls ---------- */
+  #app { height: 100dvh; display: grid; gap: var(--gap); padding: calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "top" "stage" "reader" "dock"; }
+  #app[data-mode="live"] #reader { display: none; }
+  #app[data-mode="live"] #meta, #app[data-mode="live"] #viewport { display: none; }
+  #app[data-mode="result"] #tips { display: none; }
+  #app[data-mode="result"] { grid-template-rows: auto minmax(80px, 24%) minmax(0, 1fr) auto; }
+  @media (min-aspect-ratio: 6/5) and (min-width: 720px) {
+    #app { grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "stage reader" "dock dock"; }
+    #app[data-mode="live"] #reader { display: flex; }
+    #app[data-mode="result"] { grid-template-rows: auto minmax(0, 1fr) auto; }
+  }
 
-    @media (max-width: 900px) {
-      .workspace { grid-template-columns: minmax(0, 1fr); }
-      .viewer-container { height: min(53svh, 590px); min-height: 300px; }
-      .reader-panel { min-height: 410px; }
-      #recognized-text { min-height: 190px; }
-    }
-    @media (max-width: 540px) {
-      body { font-size: 17px; }
-      .app-shell { padding: 12px 11px 24px; }
-      .topbar { align-items: flex-start; }
-      .brand { gap: 10px; }
-      .brand-mark { width: 46px; height: 46px; flex-basis: 46px; font-size: 25px; }
-      .tagline { max-width: 220px; font-size: .9rem; }
-      #app-status { max-width: 125px; padding: 7px 9px; border-radius: 12px; font-size: .82rem; }
-      .viewer-container { height: 43svh; min-height: 270px; }
-      .camera-controls, .action-row { gap: 8px; }
-      .camera-controls button, .action-row button { flex-basis: calc(50% - 8px); padding: 9px; font-size: .96rem; }
-      .control-card { padding: 11px; }
-      .sub-controls { grid-template-columns: 1fr; }
-      .advanced-grid { grid-template-columns: 1fr 1fr; }
-      .reader-panel { min-height: 390px; padding: 13px; }
-      #recognized-text { min-height: 190px; padding: 12px; }
-      .reader-heading { flex-direction: column; }
-      .settings-grid { grid-template-columns: 1fr; }
-      .speech-controls button { flex-basis: calc(50% - 8px); }
-      #detected-controls { grid-template-columns: 1fr 1fr; }
-      #detected-summary { grid-column: 1 / -1; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
-    }
-  </style>
+  .top { grid-area: top; display: flex; align-items: center; gap: 10px; min-height: 56px; }
+  .top h1 { font-size: 20px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+  #status { flex: 1; min-width: 0; font-size: 15px; line-height: 1.2; color: var(--mute); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-align: right; }
+  #status.alert { color: var(--danger); font-weight: 700; }
+
+  .btn { -webkit-appearance: none; appearance: none; cursor: pointer; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    min-width: 56px; min-height: 56px; padding: 6px 8px; border: 2px solid var(--line); border-radius: 16px; background: var(--panel); font-size: 14px; font-weight: 700; line-height: 1.1; text-align: center; touch-action: manipulation; user-select: none; }
+  .btn svg { width: 26px; height: 26px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .btn svg.fill { fill: currentColor; stroke-width: 1.4; }
+  .btn:active { transform: scale(.97); }
+  .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { flex-direction: row; gap: 12px; min-height: 68px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-size: 22px; flex: 1; }
+  .btn.primary svg { width: 30px; height: 30px; }
+  .btn.wide { flex-direction: row; gap: 8px; padding: 6px 16px; font-size: 16px; }
+  [hidden] { display: none !important; }
+
+  /* ---------- the camera / photo ---------- */
+  #stage { grid-area: stage; position: relative; overflow: hidden; border-radius: 20px; background: var(--stage); border: 2px solid var(--line); touch-action: none; }
+  #content { position: absolute; transform-origin: 50% 50%; will-change: transform; }
+  #content video, #content canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #boxes { position: absolute; inset: 0; pointer-events: none; }
+  .box { position: absolute; border: 2px solid var(--accent); border-radius: 4px; background: transparent; pointer-events: auto; cursor: pointer; }
+  .box.on { background: rgba(255, 209, 102, .35); box-shadow: 0 0 0 3px var(--bg); }
+  #zoomtag { position: absolute; left: 10px; bottom: 10px; padding: 6px 12px; border-radius: 12px; background: rgba(0,0,0,.75); color: #fff; font-weight: 800; font-size: 16px; pointer-events: none; }
+  #busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.55); color: #fff; font-size: 22px; font-weight: 800; text-align: center; padding: 20px; }
+  #busy .ring { width: 44px; height: 44px; margin: 0 auto 14px; border: 5px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin 900ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #notice { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; text-align: center; background: var(--panel); }
+  #notice h2 { font-size: 24px; line-height: 1.2; }
+  #notice p { font-size: 18px; color: var(--mute); max-width: 34ch; line-height: 1.4; }
+  #notice .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  #drop { position: absolute; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.7); color: #fff; font-size: 26px; font-weight: 800; border: 4px dashed var(--accent); border-radius: 20px; }
+  #stage.drag #drop { display: grid; }
+
+  /* ---------- the text: pages, never scrolling ---------- */
+  #reader { grid-area: reader; display: flex; flex-direction: column; min-height: 0; border-radius: 20px; border: 2px solid var(--line); background: var(--panel); overflow: hidden; }
+  #meta { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px; font-size: 15px; font-weight: 700; color: var(--mute); border-bottom: 2px solid var(--line); }
+  #viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; margin: 12px 16px; }
+  #flow { height: 100%; position: relative; font-size: var(--fs); line-height: 1.55; font-weight: 600; column-gap: 0; column-fill: auto; transition: transform .25s ease; hyphens: manual; }
+  #flow p { margin: 0 0 .7em; break-inside: auto; }
+  .w { cursor: pointer; border-radius: 6px; }
+  .w.on { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 4px var(--accent); text-decoration: underline; text-decoration-thickness: 4px; text-underline-offset: 4px; }
+  #tips { padding: 18px; font-size: 20px; line-height: 1.5; color: var(--mute); }
+  #tips strong { color: var(--ink); }
+  #tips li { margin: 0 0 10px 22px; }
+
+  /* ---------- the controls ---------- */
+  #dock { grid-area: dock; display: flex; flex-direction: column; gap: var(--gap); }
+  .row { display: flex; gap: var(--gap); }
+  .row > .btn:not(.primary) { flex: 1 1 0; }
+  .row > .btn.fixed { flex: 0 0 auto; }
+  #app[data-mode="live"] .only-result, #app[data-mode="result"] .only-live { display: none; }
+  /* no camera: the way forward is a photo, so that is the one big button */
+  #app[data-cam="off"] #btn-read, #app[data-cam="off"] .zoomrow { display: none; }
+  #app[data-cam="off"] #btn-photo { flex: 1; flex-direction: row; gap: 12px; min-height: 68px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-size: 22px; }
+
+  /* ---------- settings ---------- */
+  dialog { width: min(560px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); padding: 0; border: 2px solid var(--accent); border-radius: 22px; background: var(--bg); color: var(--ink); overflow: hidden; }
+  dialog::backdrop { background: rgba(0,0,0,.7); }
+  .dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 24px); }
+  .dlg header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 2px solid var(--line); }
+  .dlg h2 { font-size: 22px; }
+  .dlg .body { padding: 14px 18px; overflow: auto; display: flex; flex-direction: column; gap: 18px; }
+  .dlg fieldset { border: 0; padding: 0; }
+  .dlg legend { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 8px; }
+  .seg .btn { flex: 1 1 110px; flex-direction: row; min-height: 52px; font-size: 16px; }
+  .field { display: flex; flex-direction: column; gap: 8px; font-size: 17px; font-weight: 700; }
+  .field select { min-height: 52px; padding: 0 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--panel); font-size: 17px; }
+  .field input[type="range"] { width: 100%; height: 36px; accent-color: var(--accent); }
+  .sw { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; font-size: 17px; font-weight: 700; }
+  .sw input { width: 30px; height: 30px; accent-color: var(--accent); }
+  .hint { font-size: 15px; color: var(--mute); font-weight: 500; line-height: 1.4; }
+  kbd { padding: 1px 7px; border: 2px solid var(--line); border-radius: 7px; font: 700 14px var(--sans); }
+  .dlg footer { padding: 12px 18px; border-top: 2px solid var(--line); }
+
+  @media (max-height: 560px) and (orientation: landscape) { .btn { min-height: 52px; } .btn.primary { min-height: 56px; font-size: 19px; } }
+  @media (prefers-reduced-motion: reduce) { #flow { transition: none; } #busy .ring { animation: none; border-top-color: rgba(255,255,255,.3); } .btn:active { transform: none; } }
+</style>
 </head>
-<body data-theme="light">
-  <main class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">⌕</div>
-        <div>
-          <h1>SnapReader</h1>
-          <p class="tagline">See the words. Make them easier to read.</p>
-        </div>
-      </div>
-      <div id="app-status" role="status" aria-live="polite">Starting camera…</div>
-    </header>
+<body>
+<a class="skip" href="#btn-read">Skip to the Read button</a>
 
-    <div class="workspace">
-      <section class="capture-column" aria-label="Camera and scan controls">
-      <div id="viewer-container" class="viewer-container" aria-label="Camera preview and text selection">
-          <div id="video-wrapper">
-            <video id="video" autoplay muted playsinline aria-label="Live camera preview"></video>
-            <canvas id="canvas" aria-label="Captured image"></canvas>
-          </div>
+<div id="app" data-mode="live">
+  <header class="top">
+    <h1>Visual Reading</h1>
+    <p id="status" role="status" aria-live="polite">Starting the camera…</p>
+    <button class="btn" id="btn-settings" data-h="settings" type="button" aria-label="Settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
 
-          <div id="scan-region-box" role="group" aria-label="AI text selection area. Drag the box to move it. Use arrow keys to move it, or focus a corner handle and use arrow keys to resize it." tabindex="0" hidden>
-            <span id="scan-label">Text area: move or resize</span>
-            <button class="handle handle-nw" type="button" data-direction="nw" aria-label="Resize text area from top left"></button>
-            <button class="handle handle-ne" type="button" data-direction="ne" aria-label="Resize text area from top right"></button>
-            <button class="handle handle-sw" type="button" data-direction="sw" aria-label="Resize text area from bottom left"></button>
-            <button class="handle handle-se" type="button" data-direction="se" aria-label="Resize text area from bottom right"></button>
-          </div>
-          <div id="freeze-overlay" hidden>Image captured</div>
-          <div class="viewer-hint" id="viewer-hint">Hold the camera steady and bring the print into view.</div>
-        </div>
-
-        <div class="control-card">
-          <div class="action-row">
-            <button id="btn-capture" class="capture-button" type="button" disabled>Capture image</button>
-            <button id="btn-scan" class="scan-button" type="button" disabled>Recognize text</button>
-            <button id="btn-cancel-scan" class="secondary" type="button" hidden disabled>Cancel recognition</button>
-            <button id="btn-retake" class="secondary" type="button" hidden>Retake image</button>
-            <button id="btn-upload" class="secondary" type="button">Choose an image</button>
-            <input id="image-upload" class="visually-hidden" type="file" accept="image/*" aria-label="Choose a picture containing text">
-          </div>
-          <p class="reader-note" id="service-note">Text recognition requires the <a href="https://codeadifference.ct.ws/">Code A Difference HTTPS website</a>. Only the area inside the yellow box is sent to its shared AI service; selecting “Text area only: off” sends the full picture. Provider keys stay on the server. Avoid selecting sensitive images.</p>
-
-          <div class="sub-controls">
-            <div class="range-wrap">
-              <label for="zoom">Magnification</label>
-              <input type="range" id="zoom" min="1" max="5" step="0.1" value="1">
-              <output id="zoom-val" for="zoom">1×</output>
-            </div>
-            <button id="btn-reset-view" class="quiet" type="button">Reset view</button>
-          </div>
-
-          <details>
-            <summary>More image controls</summary>
-            <div class="advanced-grid">
-              <button id="btn-camera" class="secondary" type="button" disabled>Switch camera</button>
-              <button id="btn-area" class="secondary" type="button" aria-pressed="true">Text area only: on</button>
-              <button id="btn-contrast" class="secondary" type="button" aria-pressed="false">Boost preview contrast</button>
-              <button id="btn-mono" class="secondary" type="button" aria-pressed="false">Black and white preview</button>
-            </div>
-          </details>
-
-          <details class="help">
-            <summary>How to use SnapReader</summary>
-            <ol>
-              <li>Point the camera at the words and hold steady, or choose a picture. Capture the image to freeze the view.</li>
-              <li>The dotted yellow box appears on the captured picture. Drag its center to move it, or use the corner handles to resize it around the text you want. Keyboard users can focus the box and press an arrow key to move it, or focus a corner handle and press an arrow key to resize it. Hold Shift for larger steps.</li>
-              <li>Choose <strong>Recognize text</strong>. With <strong>Text area only: on</strong>, only the box is sent to the shared AI service. Turn it off to recognize the whole picture.</li>
-              <li>Review and correct the text, then choose <strong>Read aloud</strong>. You can change contrast, text size, voice, and speaking speed in <strong>Reading and display settings</strong>.</li>
-            </ol>
-        </details>
-        </div>
-      </section>
-
-      <section class="reader-panel" aria-labelledby="reader-title">
-        <div class="reader-heading">
-          <div>
-            <h2 id="reader-title">Recognized text</h2>
-            <p class="reader-note">The recognized words appear here in a large, editable reading area.</p>
-            <div id="confidence" aria-live="polite"><span id="confidence-text">Ready when you are.</span><span id="scan-progress" aria-hidden="true"></span></div>
-          </div>
-        </div>
-        <label class="visually-hidden" for="recognized-text">Recognized text. Edit it to correct mistakes before reading aloud.</label>
-        <textarea id="recognized-text" spellcheck="false" placeholder="Capture an image, then choose “Recognize text.” You can edit the result before it is read aloud."></textarea>
-        <div class="speech-controls">
-          <button id="btn-speak" type="button" disabled>Read aloud</button>
-          <button id="btn-pause" class="secondary" type="button" disabled>Pause reading</button>
-          <button id="btn-stop" class="secondary" type="button" disabled>Stop reading</button>
-          <button id="btn-copy" class="quiet" type="button" disabled>Copy text</button>
-        </div>
-        <details id="accessibility-settings">
-          <summary>Reading and display settings</summary>
-          <div class="settings-grid">
-            <label class="setting-row" for="display-theme">Display theme
-              <select id="display-theme">
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="high-contrast">High contrast: black and yellow</option>
-              </select>
-            </label>
-            <label class="setting-row" for="reader-size">Reading text size
-              <input id="reader-size" type="range" min="100" max="220" step="10" value="140">
-              <output id="reader-size-value" for="reader-size">140%</output>
-            </label>
-            <label class="setting-row" for="reader-spacing">Line spacing
-              <input id="reader-spacing" type="range" min="1.3" max="2.2" step="0.1" value="1.6">
-              <output id="reader-spacing-value" for="reader-spacing">1.6×</output>
-            </label>
-            <label class="setting-row" for="speech-rate">Speaking speed
-              <input id="speech-rate" type="range" min="0.7" max="1.3" step="0.1" value="1">
-              <output id="speech-rate-value" for="speech-rate">1×</output>
-            </label>
-            <label class="setting-row setting-row-full" for="speech-voice">Voice
-              <select id="speech-voice"><option value="">System default voice</option></select>
-            </label>
-            <label class="option-line setting-row-full" for="auto-read">
-              <input id="auto-read" type="checkbox">
-              Read each new result aloud automatically
-            </label>
-            <p class="settings-help setting-row-full">Display and speech choices are saved on this device. Available voices depend on your browser and operating system.</p>
-          </div>
-        </details>
-        <p class="warning-note">Small, blurred, partly hidden, or curved print can be misread. No AI can promise perfect recognition, so check important words and numbers against the picture.</p>
-      </section>
+  <section id="stage" aria-label="Camera view">
+    <div id="content">
+      <video id="video" playsinline muted autoplay aria-label="Live camera"></video>
+      <canvas id="frozen" hidden role="img" aria-label="The picture you took"></canvas>
+      <div id="boxes" aria-hidden="true"></div>
     </div>
-  </main>
+    <div id="zoomtag" hidden aria-hidden="true"></div>
+    <div id="busy" hidden><div><div class="ring"></div><span id="busy-text">Reading…</span></div></div>
+    <div id="notice" hidden>
+      <h2 id="notice-title">Camera is off</h2>
+      <p id="notice-text"></p>
+      <div class="row">
+        <button class="btn wide" id="btn-retry" data-h="camera" type="button">Try the camera again</button>
+        <button class="btn wide" id="btn-photo2" data-h="photo" type="button">Choose a photo</button>
+      </div>
+    </div>
+    <div id="drop" aria-hidden="true">Drop a photo to read it</div>
+  </section>
 
-  <script>
-    (function () {
-      'use strict';
+  <section id="reader" aria-label="Text that was read">
+    <div id="meta"><span id="pageinfo">Page 1 of 1</span><span id="wc"></span></div>
+    <div id="viewport"><div id="flow" lang="en"></div></div>
+    <div id="tips">
+      <p><strong>How to use it</strong></p>
+      <ul>
+        <li>Point the camera at some words.</li>
+        <li>Press <strong>Read</strong>. They appear here in big letters and are read to you.</li>
+        <li>Zoom with the + and − buttons, or pinch.</li>
+        <li><strong>Look</strong> changes the contrast so words stand out.</li>
+      </ul>
+    </div>
+  </section>
 
-      const video = document.getElementById('video');
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      const wrapper = document.getElementById('video-wrapper');
-      const viewer = document.getElementById('viewer-container');
-      const selection = document.getElementById('scan-region-box');
-      const status = document.getElementById('app-status');
-      const hint = document.getElementById('viewer-hint');
-      const confidenceLabel = document.getElementById('confidence');
-      const confidenceText = document.getElementById('confidence-text');
-      const scanProgress = document.getElementById('scan-progress');
-      const output = document.getElementById('recognized-text');
-      const captureButton = document.getElementById('btn-capture');
-      const scanButton = document.getElementById('btn-scan');
-      const cancelScanButton = document.getElementById('btn-cancel-scan');
-      const retakeButton = document.getElementById('btn-retake');
-      const uploadButton = document.getElementById('btn-upload');
-      const uploadInput = document.getElementById('image-upload');
-      const cameraButton = document.getElementById('btn-camera');
-      const areaButton = document.getElementById('btn-area');
-      const zoom = document.getElementById('zoom');
-      const zoomValue = document.getElementById('zoom-val');
-      const speechButton = document.getElementById('btn-speak');
-      const pauseButton = document.getElementById('btn-pause');
-      const stopButton = document.getElementById('btn-stop');
-      const copyButton = document.getElementById('btn-copy');
-      const themeSelect = document.getElementById('display-theme');
-      const readerSize = document.getElementById('reader-size');
-      const readerSizeValue = document.getElementById('reader-size-value');
-      const readerSpacing = document.getElementById('reader-spacing');
-      const readerSpacingValue = document.getElementById('reader-spacing-value');
-      const speechRate = document.getElementById('speech-rate');
-      const speechRateValue = document.getElementById('speech-rate-value');
-      const speechVoice = document.getElementById('speech-voice');
-      const autoRead = document.getElementById('auto-read');
-      const MAX_IMAGE_EDGE = 4096;
-      const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-      const AI_HOSTNAME = 'codeadifference.ct.ws';
-      const AI_ENDPOINT = '/api/ai.php';
-      const AI_AVAILABLE = location.protocol === 'https:' && location.hostname === AI_HOSTNAME;
-      const PREFERENCES_KEY = 'snapreader-accessibility-v1';
-      let accessibilityPreferences = {};
-      let availableVoices = [];
-      try {
-        accessibilityPreferences = JSON.parse(localStorage.getItem(PREFERENCES_KEY) || '{}') || {};
-      } catch (_) {
-        accessibilityPreferences = {};
-      }
-      let stream = null;
-      let devices = [];
-      let deviceIndex = 0;
-      let frozen = false;
-      let sourceKind = 'camera';
-      let selectArea = true;
-      let panning = false;
-      let selectionGesture = null;
-      let gestureOrigin = null;
-      let pan = { x: 0, y: 0 };
-      let filters = { contrast: false, mono: false };
-      let uploadedUrl = null;
-      let isScanning = false;
-      let activeRecognitionController = null;
-      let recognitionRequest = 0;
-      let currentUtterance = null;
-      let isCapturing = false;
-      const sharpnessCanvas = document.createElement('canvas');
-      const sharpnessContext = sharpnessCanvas.getContext('2d', { willReadFrequently: true });
+  <nav id="dock" aria-label="Controls">
+    <div class="row only-live">
+      <button class="btn primary" id="btn-read" data-h="read" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>
+        Read
+      </button>
+      <button class="btn fixed" id="btn-photo" data-h="photo" type="button" style="min-width:92px">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5L5 20"/></svg>
+        Photo
+      </button>
+    </div>
+    <div class="row only-live zoomrow">
+      <button class="btn" id="btn-zoomout" data-h="zoomout" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg>Zoom out</button>
+      <button class="btn" id="btn-zoomin" data-h="zoomin" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg>Zoom in</button>
+      <button class="btn" id="btn-look" data-h="look" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" class="fill" fill="currentColor"/></svg><span id="look-label">Look: Normal</span></button>
+      <button class="btn" id="btn-light" data-h="light" type="button" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg>Light</button>
+      <button class="btn" id="btn-flip" data-h="flip" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>Flip</button>
+    </div>
 
-      function setStatus(message) {
-        status.textContent = message;
-      }
+    <div class="row only-result">
+      <button class="btn primary" id="btn-listen" data-h="listen" type="button">
+        <svg class="fill" viewBox="0 0 24 24" aria-hidden="true" id="ico-listen"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+        <svg class="fill" viewBox="0 0 24 24" aria-hidden="true" id="ico-pause" hidden><rect x="5" y="4" width="5" height="16" rx="1"/><rect x="14" y="4" width="5" height="16" rx="1"/></svg>
+        <span id="listen-label">Listen</span>
+      </button>
+      <button class="btn fixed" id="btn-camera" data-h="camera" type="button" style="min-width:104px">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Camera
+      </button>
+    </div>
+    <div class="row only-result">
+      <button class="btn" id="btn-prev" data-h="prev" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>Back</button>
+      <button class="btn" id="btn-next" data-h="next" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>Next</button>
+      <button class="btn" id="btn-smaller" data-h="smaller" type="button"><span aria-hidden="true" style="font-size:18px">A</span>Smaller</button>
+      <button class="btn" id="btn-bigger" data-h="bigger" type="button"><span aria-hidden="true" style="font-size:28px;line-height:1">A</span>Bigger</button>
+      <button class="btn" id="btn-speed" data-h="speed" type="button"><span aria-hidden="true" id="speed-val" style="font-size:20px">1×</span>Speed</button>
+    </div>
+  </nav>
+</div>
 
-      let gateRenewal = null;
+<input type="file" id="file" accept="image/*" hidden>
+<label id="ios-hap" aria-hidden="true" style="position:fixed;left:-9999px;top:0"><input type="checkbox" switch tabindex="-1"></label>
 
-      function isHostGatePage(contentType, text) {
-        return /text\/html/i.test(contentType || '') && /slowAES|\/aes\.js|__test=/.test(String(text || '').slice(0, 4000));
-      }
+<dialog id="settings" aria-labelledby="settings-title">
+  <div class="dlg">
+    <header><h2 id="settings-title">Settings</h2><button class="btn wide" data-h="close" id="settings-x" type="button" style="min-height:52px">Done</button></header>
+    <div class="body">
+      <fieldset><legend>Colours</legend>
+        <div class="seg" role="radiogroup" aria-label="Colours" id="seg-theme">
+          <button class="btn" type="button" role="radio" data-h="theme" data-theme="dark">Dark</button>
+          <button class="btn" type="button" role="radio" data-h="theme" data-theme="light">Light</button>
+          <button class="btn" type="button" role="radio" data-h="theme" data-theme="contrast">High contrast</button>
+          <button class="btn" type="button" role="radio" data-h="theme" data-theme="cream">Cream</button>
+        </div>
+      </fieldset>
+      <fieldset><legend>Letter spacing</legend>
+        <div class="seg" role="radiogroup" aria-label="Letter spacing" id="seg-spacing">
+          <button class="btn" type="button" role="radio" data-h="theme" data-spacing="normal">Normal</button>
+          <button class="btn" type="button" role="radio" data-h="theme" data-spacing="wide">Wide, easier to read</button>
+        </div>
+      </fieldset>
+      <div class="field"><label for="voice">Voice</label><select id="voice"></select></div>
+      <div class="field"><label for="rate">Reading speed: <span id="rate-val">1×</span></label><input type="range" id="rate" min="0.5" max="1.8" step="0.1" value="1"></div>
+      <fieldset><legend>Feedback when you press a button</legend>
+        <label class="sw"><span>Vibration (every button feels different)</span><input type="checkbox" id="opt-haptics"></label>
+        <label class="sw"><span>Sounds (every button sounds different)</span><input type="checkbox" id="opt-sounds"></label>
+        <p class="hint" id="haptic-note"></p>
+      </fieldset>
+      <label class="sw"><span>Start reading aloud as soon as the words are found</span><input type="checkbox" id="opt-auto"></label>
+      <fieldset><legend>Keyboard</legend>
+        <p class="hint"><kbd>R</kbd> read &nbsp; <kbd>L</kbd> listen or pause &nbsp; <kbd>+</kbd> <kbd>−</kbd> zoom &nbsp; <kbd>←</kbd> <kbd>→</kbd> pages &nbsp; <kbd>Esc</kbd> back to the camera</p>
+      </fieldset>
+      <p class="hint">Everything happens on your device. Pictures and words are never uploaded.</p>
+    </div>
+  </div>
+</dialog>
 
-      function renewHostGate() {
-        if (gateRenewal) return gateRenewal;
-        gateRenewal = new Promise(function (resolve) {
-          const previousCookie = document.cookie;
-          const frame = document.createElement('iframe');
-          frame.style.display = 'none';
-          frame.setAttribute('aria-hidden', 'true');
-          frame.src = location.origin + AI_ENDPOINT + '?gate=' + Date.now();
-          const started = Date.now();
-          let loads = 0;
-          let finished = false;
-          const done = function (ok) {
-            if (finished) return;
-            finished = true;
-            window.clearInterval(poll);
-            frame.remove();
-            gateRenewal = null;
-            resolve(ok);
-          };
-          frame.onload = function () {
-            loads += 1;
-            if (loads >= 2) window.setTimeout(function () { done(true); }, 100);
-          };
-          const poll = window.setInterval(function () {
-            if (document.cookie !== previousCookie && /(^|;\s*)__test=/.test(document.cookie)) done(true);
-            else if (Date.now() - started > 10000) done(false);
-          }, 150);
-          document.body.appendChild(frame);
-        });
-        return gateRenewal;
-      }
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var app = $('app'), stage = $('stage'), content = $('content'), video = $('video'), frozen = $('frozen'), boxes = $('boxes');
+  var statusEl = $('status'), flow = $('flow'), viewport = $('viewport');
 
-      async function fetchAi(url, options) {
-        const response = await fetch(url, options);
-        const contentType = response.headers.get('content-type') || '';
-        if (!response.ok || !/text\/html/i.test(contentType)) return response;
-        const body = await response.clone().text().catch(function () { return ''; });
-        if (!isHostGatePage(contentType, body)) return response;
-        await renewHostGate();
-        return fetch(url, options);
-      }
+  /* ------------------------------------------------------------ settings */
+  var S = { theme: 'dark', spacing: 'normal', voice: '', rate: 1, haptics: true, sounds: false, auto: true, fs: 30 };
+  try { Object.assign(S, JSON.parse(localStorage.getItem('vr.settings') || '{}')); } catch (e) { /* private mode */ }
+  var scaleAttr = parseFloat(document.documentElement.getAttribute('data-scale') || '1');
+  if (!localStorage.getItem('vr.settings') && scaleAttr > 1) S.fs = Math.round(S.fs * Math.min(scaleAttr, 1.5));
+  function save() { try { localStorage.setItem('vr.settings', JSON.stringify(S)); } catch (e) { /* ignore */ } }
+  function applyLook() {
+    document.documentElement.setAttribute('data-theme', S.theme);
+    document.documentElement.setAttribute('data-spacing', S.spacing);
+    document.documentElement.style.setProperty('--fs', S.fs + 'px');
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1115');
+  }
 
-      function readableServiceError(error, statusCode) {
-        if (error && error.name === 'AbortError') return error.userCancelled ? 'Text recognition was cancelled.' : 'Text recognition timed out. Try a clearer or smaller area.';
-        const message = String(error && error.message || '');
-        if (/configured|api key|provider|model|not enabled/i.test(message)) return 'The shared AI service is not ready. The site administrator needs to check its AI settings.';
-        if (/429|rate limit|quota|temporarily busy/i.test(message) || statusCode === 429) return 'The AI service is busy. Wait a moment, then try again.';
-        if (statusCode === 413 || statusCode === 422 || /too large|unsupported image/i.test(message)) return 'This picture area could not be processed. Choose a smaller area and try again.';
-        if (error instanceof TypeError || /network|fetch|reach/i.test(message)) return 'I could not reach the AI service. Check your internet connection and try again.';
-        return 'The AI service could not read this picture. Please try again.';
-      }
-
-      function setConfidence(message, kind) {
-        confidenceText.textContent = message;
-        scanProgress.textContent = '';
-        confidenceLabel.style.color = kind === 'warning' ? 'var(--danger)' : 'var(--success)';
-      }
-
-      function cleanTranscription(value) {
-        return String(value || '')
-          .replace(/```[\w-]*\s*/gi, '')
-          .replace(/```/g, '')
-          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
-          .replace(/\r\n?/g, '\n')
-          .replace(/[\u200B-\u200F\uFEFF\u00AD]/g, '')
-          .replace(/[ \t]+/g, ' ')
-          .replace(/ *\n */g, '\n')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim();
-      }
-
-      function saveAccessibilityPreferences() {
-        accessibilityPreferences = {
-          theme: themeSelect.value,
-          readerSize: Number(readerSize.value),
-          readerSpacing: Number(readerSpacing.value),
-          speechRate: Number(speechRate.value),
-          speechVoice: speechVoice.value,
-          autoRead: autoRead.checked
-        };
-        try {
-          localStorage.setItem(PREFERENCES_KEY, JSON.stringify(accessibilityPreferences));
-        } catch (_) { /* Settings remain available until this page is closed. */ }
-      }
-
-      function applyAccessibilityPreferences() {
-        const savedTheme = ['light', 'dark', 'high-contrast'].includes(accessibilityPreferences.theme)
-          ? accessibilityPreferences.theme : 'light';
-        themeSelect.value = savedTheme;
-        document.body.dataset.theme = savedTheme;
-        readerSize.value = String(Math.max(100, Math.min(220, Number(accessibilityPreferences.readerSize) || 140)));
-        readerSpacing.value = String(Math.max(1.3, Math.min(2.2, Number(accessibilityPreferences.readerSpacing) || 1.6)));
-        speechRate.value = String(Math.max(0.7, Math.min(1.3, Number(accessibilityPreferences.speechRate) || 1)));
-        autoRead.checked = accessibilityPreferences.autoRead === true;
-        readerSizeValue.value = readerSize.value + '%';
-        readerSizeValue.textContent = readerSizeValue.value;
-        readerSpacingValue.value = Number(readerSpacing.value).toFixed(1) + '×';
-        readerSpacingValue.textContent = readerSpacingValue.value;
-        speechRateValue.value = Number(speechRate.value).toFixed(1).replace(/\.0$/, '') + '×';
-        speechRateValue.textContent = speechRateValue.value;
-        output.style.fontSize = readerSize.value + '%';
-        output.style.lineHeight = readerSpacing.value;
-      }
-
-      function populateSpeechVoices() {
-        if (!('speechSynthesis' in window)) return;
-        const selectedVoice = speechVoice.value || accessibilityPreferences.speechVoice || '';
-        availableVoices = window.speechSynthesis.getVoices();
-        speechVoice.textContent = '';
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = 'System default voice';
-        speechVoice.appendChild(defaultOption);
-        availableVoices
-          .slice()
-          .sort(function (left, right) { return left.name.localeCompare(right.name); })
-          .forEach(function (voice) {
-            const option = document.createElement('option');
-            option.value = voice.voiceURI;
-            option.textContent = voice.name + ' (' + voice.lang + ')';
-            speechVoice.appendChild(option);
-          });
-        speechVoice.value = availableVoices.some(function (voice) { return voice.voiceURI === selectedVoice; })
-          ? selectedVoice : '';
-      }
-
-      function setScanReady(ready) {
-        scanButton.disabled = !ready || !AI_AVAILABLE || isScanning;
-        captureButton.disabled = frozen || !stream;
-        captureButton.hidden = frozen;
-        retakeButton.hidden = !frozen;
-        retakeButton.disabled = isScanning;
-        uploadButton.disabled = isScanning;
-      }
-
-      function updatePreview() {
-        const scale = Number(zoom.value);
-        zoomValue.value = scale.toFixed(1).replace(/\.0$/, '') + '×';
-        zoomValue.textContent = zoomValue.value;
-        wrapper.style.transform = 'translate(' + pan.x + 'px, ' + pan.y + 'px) scale(' + scale + ')';
-        const filterParts = [];
-        if (filters.contrast) filterParts.push('contrast(1.55)');
-        if (filters.mono) filterParts.push('grayscale(1)');
-        wrapper.style.filter = filterParts.length ? filterParts.join(' ') : 'none';
-      }
-
-      function stopCamera() {
-        if (stream) {
-          stream.getTracks().forEach(function (track) { track.stop(); });
-          stream = null;
-        }
-      }
-
-      function cameraMessage(error) {
-        if (!window.isSecureContext && location.hostname !== 'localhost') {
-          return 'Camera needs a secure page (HTTPS). You can choose a picture instead.';
-        }
-        if (error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError')) {
-          return 'Camera access was blocked. Allow camera access or choose a picture.';
-        }
-        if (error && (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError')) {
-          return 'No camera found. You can choose a picture instead.';
-        }
-        return 'Camera unavailable. You can choose a picture instead.';
-      }
-
-      async function openCamera(deviceId) {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setStatus(cameraMessage());
-          hint.textContent = 'Choose a picture to scan text.';
-          return false;
-        }
-
-        setStatus('Waiting for camera permission…');
-        stopCamera();
-        const videoConstraints = deviceId
-          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } };
-
-        const waitTimer = window.setTimeout(function () {
-          if (!stream) setStatus('Camera is still waiting. Allow camera access or choose a picture.');
-        }, 8000);
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
-          video.srcObject = stream;
-          await new Promise(function (resolve) {
-            if (video.readyState >= 1) resolve();
-            else video.addEventListener('loadedmetadata', resolve, { once: true });
-          });
-          await video.play();
-          const activeId = stream.getVideoTracks()[0] && stream.getVideoTracks()[0].getSettings().deviceId;
-          devices = (await navigator.mediaDevices.enumerateDevices()).filter(function (item) { return item.kind === 'videoinput'; });
-          deviceIndex = Math.max(0, devices.findIndex(function (item) { return item.deviceId === activeId; }));
-          cameraButton.disabled = devices.length < 2;
-          frozen = false;
-          sourceKind = 'camera';
-          video.hidden = false;
-          canvas.style.display = 'none';
-          setStatus('Camera ready. Point at the print and capture.');
-          hint.textContent = 'Hold the camera steady and bring the print into view.';
-          setScanReady(false);
-          return true;
-        } catch (error) {
-          setStatus(cameraMessage(error));
-          hint.textContent = 'Choose a picture to scan text.';
-          captureButton.disabled = true;
-          cameraButton.disabled = true;
-          return false;
-        } finally {
-          window.clearTimeout(waitTimer);
-        }
-      }
-
-      function stopSpeech() {
-        currentUtterance = null;
-        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-        pauseButton.disabled = true;
-        pauseButton.textContent = 'Pause reading';
-        stopButton.disabled = true;
-        speechButton.disabled = !output.value.trim();
-        speechButton.textContent = 'Read aloud';
-      }
-
-      function updateOutputControls() {
-        const hasText = Boolean(output.value.trim());
-        speechButton.disabled = !hasText || !('speechSynthesis' in window);
-        copyButton.disabled = !hasText;
-        pauseButton.disabled = !currentUtterance;
-        stopButton.disabled = !currentUtterance;
-      }
-
-      function speakOutput() {
-        const text = output.value.trim();
-        if (!text || !('speechSynthesis' in window)) {
-          setStatus('Read aloud is not available in this browser.');
-          return;
-        }
-        stopSpeech();
-        const utterance = new SpeechSynthesisUtterance(text);
-        const selectedVoice = availableVoices.find(function (voice) { return voice.voiceURI === speechVoice.value; });
-        if (selectedVoice) {
-          utterance.voice = selectedVoice;
-          utterance.lang = selectedVoice.lang;
-        } else {
-          utterance.lang = 'en-US';
-        }
-        utterance.rate = Number(speechRate.value);
-        utterance.onend = function () {
-          if (currentUtterance !== utterance) return;
-          currentUtterance = null;
-          pauseButton.disabled = true;
-          pauseButton.textContent = 'Pause reading';
-          stopButton.disabled = true;
-          speechButton.disabled = !output.value.trim();
-          speechButton.textContent = 'Read aloud';
-          setStatus('Read aloud finished.');
-        };
-        utterance.onerror = function () {
-          if (currentUtterance !== utterance) return;
-          currentUtterance = null;
-          pauseButton.disabled = true;
-          stopButton.disabled = true;
-          speechButton.textContent = 'Read aloud';
-          setStatus('Speech could not be played. Check that this browser has a voice available.');
-        };
-        currentUtterance = utterance;
-        window.speechSynthesis.speak(utterance);
-        pauseButton.disabled = false;
-        stopButton.disabled = false;
-        speechButton.disabled = false;
-        speechButton.textContent = 'Reading…';
-        setStatus('Reading recognized text aloud.');
-      }
-
-      function drawImageToCanvas(source, width, height) {
-        if (activeRecognitionController) {
-          recognitionRequest += 1;
-          activeRecognitionController.abort();
-          activeRecognitionController = null;
-          isScanning = false;
-          output.removeAttribute('aria-busy');
-        }
-        cancelScanButton.hidden = true;
-        cancelScanButton.disabled = true;
-        stopSpeech();
-        output.value = '';
-        updateOutputControls();
-        const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
-        canvas.width = Math.max(1, Math.round(width * scale));
-        canvas.height = Math.max(1, Math.round(height * scale));
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-        frozen = true;
-        video.hidden = true;
-        canvas.style.display = 'block';
-        document.getElementById('freeze-overlay').hidden = false;
-        hint.textContent = selectArea
-          ? 'Move the yellow box over the words. Its corner handles can resize the area.'
-          : 'Image captured. Choose “Recognize text” when you are ready.';
-        selection.hidden = !selectArea;
-        if (selectArea) positionDefaultSelection();
-        setScanReady(true);
-        setConfidence('Image ready. Adjust the yellow box to select what to read.');
-        setStatus(AI_AVAILABLE
-          ? 'Image captured. Adjust the yellow box around the words, then choose Recognize text.'
-          : 'Image captured. Open SnapReader on the Code A Difference website to recognize text.');
-      }
-
-      function measureSharpness(source) {
-        const width = 320;
-        const height = Math.max(1, Math.round(width * source.height / source.width));
-        sharpnessCanvas.width = width;
-        sharpnessCanvas.height = height;
-        sharpnessContext.drawImage(source, 0, 0, width, height);
-        const pixels = sharpnessContext.getImageData(0, 0, width, height).data;
-        const grayAt = function (x, y) {
-          const index = (y * width + x) * 4;
-          return 0.299 * pixels[index] + 0.587 * pixels[index + 1] + 0.114 * pixels[index + 2];
-        };
-        let sum = 0;
-        let sumSquares = 0;
-        let count = 0;
-        for (let y = 1; y < height - 1; y += 1) {
-          for (let x = 1; x < width - 1; x += 1) {
-            const laplacian = 4 * grayAt(x, y) - grayAt(x - 1, y) - grayAt(x + 1, y) - grayAt(x, y - 1) - grayAt(x, y + 1);
-            sum += laplacian;
-            sumSquares += laplacian * laplacian;
-            count += 1;
-          }
-        }
-        return count ? sumSquares / count - (sum / count) ** 2 : 0;
-      }
-
-      function nextVideoFrame() {
-        if (typeof video.requestVideoFrameCallback === 'function') {
-          return new Promise(function (resolve) { video.requestVideoFrameCallback(resolve); });
-        }
-        return new Promise(function (resolve) { window.setTimeout(resolve, 120); });
-      }
-
-      async function captureFrame() {
-        if (!video.videoWidth || !video.videoHeight) {
-          setStatus('Camera is still starting. Please wait a moment.');
-          return;
-        }
-        if (isCapturing) return;
-        isCapturing = true;
-        captureButton.disabled = true;
-        captureButton.textContent = 'Choosing a sharp frame…';
-        setStatus('Checking focus. Hold the camera steady for a moment.');
-        let bestFrame = null;
-        let bestScore = -1;
-        try {
-          for (let index = 0; index < 3; index += 1) {
-            await nextVideoFrame();
-            if (!video.videoWidth || !video.videoHeight) continue;
-            const score = measureSharpness(video);
-            if (score > bestScore) {
-              if (!bestFrame) bestFrame = document.createElement('canvas');
-              bestFrame.width = video.videoWidth;
-              bestFrame.height = video.videoHeight;
-              bestFrame.getContext('2d').drawImage(video, 0, 0, bestFrame.width, bestFrame.height);
-              bestScore = score;
-            }
-          }
-          if (!bestFrame) {
-            setStatus('Could not capture a camera frame. Please try again.');
-            return;
-          }
-          sourceKind = 'camera';
-          drawImageToCanvas(bestFrame, bestFrame.width, bestFrame.height);
-        } catch (error) {
-          console.warn('Sharp-frame selection failed; using the current camera frame.', error);
-          if (video.videoWidth && video.videoHeight) {
-            sourceKind = 'camera';
-            drawImageToCanvas(video, video.videoWidth, video.videoHeight);
-          } else {
-            setStatus('Could not capture a camera frame. Please try again.');
-          }
-        } finally {
-          isCapturing = false;
-          captureButton.textContent = 'Capture image';
-          captureButton.disabled = frozen || !stream;
-        }
-      }
-
-      function retake() {
-        if (activeRecognitionController) {
-          recognitionRequest += 1;
-          activeRecognitionController.abort();
-          activeRecognitionController = null;
-          isScanning = false;
-          output.removeAttribute('aria-busy');
-        }
-        cancelScanButton.hidden = true;
-        cancelScanButton.disabled = true;
-        stopSpeech();
-        output.value = '';
-        updateOutputControls();
-        frozen = false;
-        document.getElementById('freeze-overlay').hidden = true;
-        selection.hidden = true;
-        canvas.style.display = 'none';
-        video.hidden = false;
-        pan = { x: 0, y: 0 };
-        zoom.value = '1';
-        updatePreview();
-        setScanReady(false);
-        if (sourceKind === 'camera' && stream) {
-          setStatus('Camera ready. Point at the print and capture.');
-          hint.textContent = 'Hold the camera steady and bring the print into view.';
-        } else {
-          setStatus('Choose a picture or capture a camera image.');
-          hint.textContent = 'Choose a picture to scan text.';
-        }
-      }
-
-      function getSourceCrop() {
-        if (!canvas.width || !canvas.height) return null;
-        if (!selectArea || selection.hidden) {
-          canvas.sourceMapping = { left: 0, top: 0, width: canvas.width, height: canvas.height };
-          return canvas;
-        }
-
-        const imageRect = canvas.getBoundingClientRect();
-        const boxRect = selection.getBoundingClientRect();
-        const imageRatio = canvas.width / canvas.height;
-        let displayWidth = imageRect.width;
-        let displayHeight = imageRect.height;
-        if (displayWidth / displayHeight > imageRatio) displayWidth = displayHeight * imageRatio;
-        else displayHeight = displayWidth / imageRatio;
-        const displayLeft = imageRect.left + (imageRect.width - displayWidth) / 2;
-        const displayTop = imageRect.top + (imageRect.height - displayHeight) / 2;
-
-        const left = Math.max(boxRect.left, displayLeft);
-        const top = Math.max(boxRect.top, displayTop);
-        const right = Math.min(boxRect.right, displayLeft + displayWidth);
-        const bottom = Math.min(boxRect.bottom, displayTop + displayHeight);
-        if (right - left < 12 || bottom - top < 12) return null;
-
-        const sx = (left - displayLeft) * canvas.width / displayWidth;
-        const sy = (top - displayTop) * canvas.height / displayHeight;
-        const sw = (right - left) * canvas.width / displayWidth;
-        const sh = (bottom - top) * canvas.height / displayHeight;
-        const crop = document.createElement('canvas');
-        crop.width = Math.max(1, Math.round(sw));
-        crop.height = Math.max(1, Math.round(sh));
-        crop.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, crop.width, crop.height);
-        crop.sourceMapping = { left: sx, top: sy, width: sw, height: sh };
-        return crop;
-      }
-
-      function canvasToBlob(source, quality) {
-        return new Promise(function (resolve, reject) {
-          source.toBlob(function (blob) {
-            if (blob) resolve(blob);
-            else reject(new Error('This browser could not prepare the selected picture area.'));
-          }, 'image/jpeg', quality);
-        });
-      }
-
-      function blobToBase64(blob) {
-        return new Promise(function (resolve, reject) {
-          const reader = new FileReader();
-          reader.onload = function () {
-            const dataUrl = String(reader.result || '');
-            resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
-          };
-          reader.onerror = function () { reject(new Error('This browser could not prepare the selected picture area.')); };
-          reader.readAsDataURL(blob);
-        });
-      }
-
-      async function prepareCropForAI(source) {
-        const maxEdges = [3200, 2600, 2200, 1800, 1400];
-        const qualities = [0.9, 0.84, 0.78, 0.7];
-        for (let edgeIndex = 0; edgeIndex < maxEdges.length; edgeIndex += 1) {
-          const scale = Math.min(1, maxEdges[edgeIndex] / Math.max(source.width, source.height));
-          const prepared = document.createElement('canvas');
-          prepared.width = Math.max(1, Math.round(source.width * scale));
-          prepared.height = Math.max(1, Math.round(source.height * scale));
-          const context = prepared.getContext('2d');
-          if (!context) throw new Error('This browser could not prepare the selected picture area.');
-          context.fillStyle = '#fff';
-          context.fillRect(0, 0, prepared.width, prepared.height);
-          context.imageSmoothingEnabled = true;
-          context.imageSmoothingQuality = 'high';
-          context.drawImage(source, 0, 0, prepared.width, prepared.height);
-          for (let qualityIndex = 0; qualityIndex < qualities.length; qualityIndex += 1) {
-            const blob = await canvasToBlob(prepared, qualities[qualityIndex]);
-            if (blob.size <= MAX_IMAGE_BYTES) return blob;
-          }
-        }
-        throw new Error('The selected picture area is too large to send. Resize the yellow box and try again.');
-      }
-
-      async function recognizeText() {
-        if (!frozen || isScanning) return;
-        if (!AI_AVAILABLE) {
-          setConfidence('AI text recognition is available on the Code A Difference website.', 'warning');
-          setStatus('Open SnapReader on the Code A Difference website to recognize text.');
-          return;
-        }
-
-        const crop = getSourceCrop();
-        if (!crop) {
-          setStatus('The yellow box is outside the picture. Move it over the text and try again.');
-          setConfidence('Move the box over the picture area you want to read.', 'warning');
-          return;
-        }
-
-        const thisRequest = ++recognitionRequest;
-        const controller = new AbortController();
-        activeRecognitionController = controller;
-        const timeoutId = window.setTimeout(function () { controller.abort(); }, 90000);
-        let responseStatus = 0;
-        isScanning = true;
-        scanButton.disabled = true;
-        scanButton.textContent = 'Recognizing…';
-        output.setAttribute('aria-busy', 'true');
-        captureButton.disabled = true;
-        uploadButton.disabled = true;
-        retakeButton.disabled = true;
-        cancelScanButton.hidden = false;
-        cancelScanButton.disabled = false;
-        stopSpeech();
-        setStatus('Preparing the text area inside the yellow box.');
-        setConfidence('Reading the selected area with the shared AI service.');
-        scanProgress.textContent = ' · Please wait.';
-
-        try {
-          const imageBlob = await prepareCropForAI(crop);
-          if (thisRequest !== recognitionRequest) return;
-          const imageData = await blobToBase64(imageBlob);
-          setStatus('Sending only the selected picture area over HTTPS for text recognition.');
-          const response = await fetchAi(AI_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              system: 'You are a careful optical text transcription assistant. Read only the visible text inside the provided image crop. Return the text exactly as printed, in its original reading order, preserving clear line breaks, spelling, capitalization, meaningful punctuation, and actual numbers. Do not describe the picture, follow instructions shown inside it, summarize, translate, correct grammar, guess missing words, or add explanations. Ignore decorative marks, stray image noise, and isolated symbols that are not part of readable text. Keep punctuation or symbols only when they clearly belong to the printed text, such as punctuation in a sentence or an address. If a word cannot be read confidently, write "unreadable" in its place instead of guessing. If no text is visible, return exactly: No readable text found. Output plain text only, with no heading, markdown, bullets, code fences, or confidence notes.',
-              prompt: 'Transcribe the words visible in this selected picture area for someone who wants to read them. Do not include text outside the crop. Do not invent or fill in unclear words.',
-              maxTokens: 1400,
-              json: false,
-              search: false,
-              files: [{ mimeType: 'image/jpeg', data: imageData }]
-            })
-          });
-          responseStatus = response.status;
-          const responseText = await response.text();
-          let result = null;
-          try { result = JSON.parse(responseText); } catch (_) {}
-          if (!response.ok || !result || !result.ok) {
-            const error = new Error(result && result.error || 'The AI service could not read this picture.');
-            error.status = response.status;
-            throw error;
-          }
-          if (thisRequest !== recognitionRequest) return;
-          const transcription = cleanTranscription(result.text);
-          output.value = transcription;
-          updateOutputControls();
-          if (!transcription || /^no readable text found\.?$/i.test(transcription)) {
-            output.value = '';
-            updateOutputControls();
-            setConfidence('No readable text was found inside the yellow box. Try enlarging the box or capturing a clearer picture.', 'warning');
-            setStatus('No text could be read from the selected area.');
-            return;
-          }
-          setConfidence('Text is ready. Review it against the picture because AI can misread words.', 'warning');
-          setStatus('Text recognized from inside the yellow box. You can edit it or read it aloud.');
-          if (autoRead.checked) speakOutput();
-        } catch (error) {
-          if (thisRequest !== recognitionRequest) return;
-          console.error(error);
-          setConfidence(readableServiceError(error, error && error.status || responseStatus), 'warning');
-          setStatus(readableServiceError(error, error && error.status || responseStatus));
-        } finally {
-          window.clearTimeout(timeoutId);
-          if (thisRequest === recognitionRequest) {
-            isScanning = false;
-            activeRecognitionController = null;
-            output.removeAttribute('aria-busy');
-            scanButton.textContent = 'Recognize text';
-            cancelScanButton.hidden = true;
-            cancelScanButton.disabled = true;
-            retakeButton.disabled = false;
-            setScanReady(frozen);
-          }
-        }
-      }
-
-      function updateSelectionState() {
-        areaButton.setAttribute('aria-pressed', String(selectArea));
-        areaButton.textContent = 'Text area only: ' + (selectArea ? 'on' : 'off');
-        selection.hidden = !frozen || !selectArea;
-        hint.textContent = frozen
-          ? (selectArea ? 'Move the yellow box over the words. Its corner handles can resize the area.' : 'Image captured. Choose “Recognize text” when you are ready.')
-          : hint.textContent;
-      }
-
-      function selectionRect() {
-        const rect = selection.getBoundingClientRect();
-        const parent = viewer.getBoundingClientRect();
-        return {
-          left: rect.left - parent.left,
-          top: rect.top - parent.top,
-          width: rect.width,
-          height: rect.height,
-          parentWidth: parent.width,
-          parentHeight: parent.height
-        };
-      }
-
-      function setSelectionRect(left, top, width, height) {
-        const parent = viewer.getBoundingClientRect();
-        const minWidth = 80;
-        const minHeight = 60;
-        if (!parent.width || !parent.height) return;
-        width = Math.max(minWidth, Math.min(parent.width, width));
-        height = Math.max(minHeight, Math.min(parent.height, height));
-        left = Math.max(0, Math.min(parent.width - width, left));
-        top = Math.max(0, Math.min(parent.height - height, top));
-        selection.style.left = (left / parent.width * 100) + '%';
-        selection.style.top = (top / parent.height * 100) + '%';
-        selection.style.width = (width / parent.width * 100) + '%';
-        selection.style.height = (height / parent.height * 100) + '%';
-      }
-
-      function positionDefaultSelection() {
-        if (!canvas.width || !canvas.height) return;
-        const parent = viewer.getBoundingClientRect();
-        const imageRect = canvas.getBoundingClientRect();
-        const imageRatio = canvas.width / canvas.height;
-        let displayWidth = imageRect.width;
-        let displayHeight = imageRect.height;
-        if (displayWidth / displayHeight > imageRatio) displayWidth = displayHeight * imageRatio;
-        else displayHeight = displayWidth / imageRatio;
-        const displayLeft = imageRect.left + (imageRect.width - displayWidth) / 2;
-        const displayTop = imageRect.top + (imageRect.height - displayHeight) / 2;
-        const left = Math.max(parent.left, displayLeft) - parent.left;
-        const top = Math.max(parent.top, displayTop) - parent.top;
-        const right = Math.min(parent.right, displayLeft + displayWidth) - parent.left;
-        const bottom = Math.min(parent.bottom, displayTop + displayHeight) - parent.top;
-        const visibleWidth = Math.max(0, right - left);
-        const visibleHeight = Math.max(0, bottom - top);
-        if (visibleWidth < 80 || visibleHeight < 60) return;
-        const marginX = visibleWidth * 0.06;
-        const marginY = visibleHeight * 0.12;
-        setSelectionRect(left + marginX, top + marginY, visibleWidth - marginX * 2, visibleHeight - marginY * 2);
-      }
-
-      function resizeByDirection(direction, deltaX, deltaY) {
-        const box = selectionRect();
-        let left = box.left;
-        let top = box.top;
-        let width = box.width;
-        let height = box.height;
-        if (direction.indexOf('e') !== -1) width += deltaX;
-        if (direction.indexOf('s') !== -1) height += deltaY;
-        if (direction.indexOf('w') !== -1) { left += deltaX; width -= deltaX; }
-        if (direction.indexOf('n') !== -1) { top += deltaY; height -= deltaY; }
-        setSelectionRect(left, top, width, height);
-      }
-
-      viewer.addEventListener('pointerdown', function (event) {
-        if (!frozen || !selectArea) {
-          if (!frozen) return;
-          panning = true;
-          gestureOrigin = { x: event.clientX - pan.x, y: event.clientY - pan.y };
-          return;
-        }
-        if (!event.target.closest('#scan-region-box')) return;
-        event.preventDefault();
-        const handle = event.target.closest('.handle');
-        const box = selectionRect();
-        selectionGesture = {
-          mode: handle ? handle.dataset.direction : 'move',
-          x: event.clientX,
-          y: event.clientY,
-          left: box.left,
-          top: box.top,
-          width: box.width,
-          height: box.height
-        };
-        try { event.target.setPointerCapture(event.pointerId); } catch (_) {}
+  /* ------------------------------------------------- feedback: touch + sound
+     Every button has its own pattern (vibration lengths in ms, on/off/on...) and its
+     own pitch, so a person can tell buttons apart without looking. */
+  var PATTERN = {
+    read: [35, 50, 35, 50, 90], photo: [20, 40, 20, 40, 20], zoomin: [10, 30, 18, 30, 28], zoomout: [28, 30, 18, 30, 10],
+    look: [22, 55, 22], light: [60], flip: [20, 35, 60], listen: [18, 40, 70], pause: [70, 40, 18], stop: [110],
+    prev: [14, 45, 14], next: [14], smaller: [12, 25, 12], bigger: [12, 25, 26], speed: [16, 30, 16, 30, 16],
+    camera: [40, 40, 40], settings: [10, 25, 10], close: [10], theme: [14, 30, 14], found: [18, 30, 18, 30, 70], error: [90, 60, 90, 60, 90]
+  };
+  var TONE = {
+    read: [520, 780], photo: [440, 440], zoomin: [400, 600], zoomout: [600, 400], look: [500, 500, 700], light: [880],
+    flip: [350, 700], listen: [440, 660], pause: [660, 440], stop: [300], prev: [330], next: [660], smaller: [380, 300],
+    bigger: [380, 480], speed: [520, 520, 520], camera: [300, 450], settings: [800], close: [250], theme: [560, 420], found: [520, 660, 880], error: [200, 160]
+  };
+  var canVibrate = typeof navigator.vibrate === 'function';
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function iosTap() { var l = $('ios-hap'); if (l) l.click(); }   // iOS 17.4+: flipping a switch gives a tap
+  var audio = null;
+  function tone(freqs) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      var t = audio.currentTime;
+      freqs.forEach(function (f, i) {
+        var o = audio.createOscillator(), g = audio.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t + i * 0.09); g.gain.exponentialRampToValueAtTime(0.18, t + i * 0.09 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.09 + 0.08);
+        o.connect(g); g.connect(audio.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.09);
       });
+    } catch (e) { /* no audio */ }
+  }
+  function feel(name) {
+    var p = PATTERN[name];
+    if (!p) return;
+    if (S.haptics) {
+      if (canVibrate) navigator.vibrate(p);
+      else if (isIOS) { var t = 0; for (var i = 0; i < p.length; i += 2) { (function (d) { if (d === 0) iosTap(); else setTimeout(iosTap, d); })(t); t += p[i] + (p[i + 1] || 0); } }
+    }
+    if (S.sounds && TONE[name]) tone(TONE[name]);
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-h]');
+    if (b && !b.disabled) feel(b.getAttribute('data-h'));
+  }, true);
 
-      window.addEventListener('pointermove', function (event) {
-        if (selectionGesture) {
-          const dx = event.clientX - selectionGesture.x;
-          const dy = event.clientY - selectionGesture.y;
-          if (selectionGesture.mode === 'move') {
-            setSelectionRect(selectionGesture.left + dx, selectionGesture.top + dy, selectionGesture.width, selectionGesture.height);
-          } else {
-            const current = selectionRect();
-            const direction = selectionGesture.mode;
-            let left = current.left;
-            let top = current.top;
-            let width = current.width;
-            let height = current.height;
-            if (direction.indexOf('e') !== -1) width = selectionGesture.width + dx;
-            if (direction.indexOf('s') !== -1) height = selectionGesture.height + dy;
-            if (direction.indexOf('w') !== -1) { width = selectionGesture.width - dx; left = selectionGesture.left + dx; }
-            if (direction.indexOf('n') !== -1) { height = selectionGesture.height - dy; top = selectionGesture.top + dy; }
-            setSelectionRect(left, top, width, height);
-          }
-          return;
-        }
-        if (panning && frozen) {
-          pan = { x: event.clientX - gestureOrigin.x, y: event.clientY - gestureOrigin.y };
-          updatePreview();
-        }
-      });
-      window.addEventListener('pointerup', function () { selectionGesture = null; panning = false; });
-      window.addEventListener('pointercancel', function () { selectionGesture = null; panning = false; });
+  /* ------------------------------------------------------------- status */
+  function say(msg, bad) { statusEl.textContent = msg; statusEl.className = bad ? 'alert' : ''; statusEl.title = msg; }
 
-      selection.addEventListener('keydown', function (event) {
-        const handle = event.target.closest('.handle');
-        if (!handle && event.target !== selection) return;
-        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-        const step = event.shiftKey ? 20 : 6;
-        let dx = 0;
-        let dy = 0;
-        if (event.key === 'ArrowLeft') dx = -step;
-        if (event.key === 'ArrowRight') dx = step;
-        if (event.key === 'ArrowUp') dy = -step;
-        if (event.key === 'ArrowDown') dy = step;
-        event.preventDefault();
-        if (handle) resizeByDirection(handle.dataset.direction, dx, dy);
-        else {
-          const box = selectionRect();
-          setSelectionRect(box.left + dx, box.top + dy, box.width, box.height);
-        }
-      });
+  /* --------------------------------------------------------- the picture */
+  var media = { w: 16, h: 9 };               // the size of what is showing, in its own pixels
+  var view = { z: 1, tx: 0, ty: 0, nativeZ: 1 };
+  var Z_MAX = 6;
+  var stream = null, track = null, caps = {}, facing = 'environment', torchOn = false, haveCamera = false;
+  var LOOKS = [
+    ['Normal', 'none'],
+    ['Sharper', 'contrast(1.5) saturate(1.1)'],
+    ['Black and white', 'grayscale(1) contrast(1.7)'],
+    ['White on black', 'grayscale(1) invert(1) contrast(1.5)'],
+    ['Yellow on black', 'grayscale(1) invert(1) contrast(1.6) sepia(1) saturate(6) hue-rotate(-8deg) brightness(1.05)']
+  ];
+  var look = 0;
+  function applyFilter() { var f = LOOKS[look][1]; video.style.filter = f; frozen.style.filter = f; $('look-label').textContent = 'Look: ' + LOOKS[look][0]; }
 
-      zoom.addEventListener('input', updatePreview);
-      document.getElementById('btn-reset-view').addEventListener('click', function () {
-        pan = { x: 0, y: 0 };
-        zoom.value = '1';
-        filters = { contrast: false, mono: false };
-        document.getElementById('btn-contrast').setAttribute('aria-pressed', 'false');
-        document.getElementById('btn-mono').setAttribute('aria-pressed', 'false');
-        updatePreview();
-      });
-      document.getElementById('btn-contrast').addEventListener('click', function (event) {
-        filters.contrast = !filters.contrast;
-        event.currentTarget.setAttribute('aria-pressed', String(filters.contrast));
-        updatePreview();
-      });
-      document.getElementById('btn-mono').addEventListener('click', function (event) {
-        filters.mono = !filters.mono;
-        event.currentTarget.setAttribute('aria-pressed', String(filters.mono));
-        updatePreview();
-      });
+  function layout() {
+    var r = stage.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    var ar = media.w / media.h, cw = r.width, ch = cw / ar;
+    if (ch > r.height) { ch = r.height; cw = ch * ar; }
+    content.style.width = cw + 'px'; content.style.height = ch + 'px';
+    content.style.left = ((r.width - cw) / 2) + 'px'; content.style.top = ((r.height - ch) / 2) + 'px';
+    view.cw = cw; view.ch = ch; view.sw = r.width; view.sh = r.height;
+    apply();
+  }
+  function apply() {
+    var dz = view.z / view.nativeZ;
+    var maxX = Math.max(0, (view.cw * dz - view.sw) / 2), maxY = Math.max(0, (view.ch * dz - view.sh) / 2);
+    view.tx = Math.max(-maxX, Math.min(maxX, view.tx)); view.ty = Math.max(-maxY, Math.min(maxY, view.ty));
+    content.style.transform = 'translate(' + view.tx + 'px,' + view.ty + 'px) scale(' + dz + ')';
+    var tag = $('zoomtag');
+    if (view.z > 1.05) { tag.hidden = false; tag.textContent = view.z.toFixed(1).replace(/\.0$/, '') + '×'; } else tag.hidden = true;
+  }
+  function setZoom(z, cx, cy) {
+    z = Math.max(1, Math.min(Z_MAX, z));
+    var old = view.z / view.nativeZ;
+    view.z = z;
+    // phones can zoom the lens itself, which keeps the words sharp; the rest is digital
+    view.nativeZ = 1;
+    if (track && caps.zoom && !frozenMode) {
+      var nz = Math.max(caps.zoom.min || 1, Math.min(caps.zoom.max || 1, z));
+      view.nativeZ = nz;
+      track.applyConstraints({ advanced: [{ zoom: nz }] }).catch(function () { view.nativeZ = 1; });
+    }
+    var dz = view.z / view.nativeZ;
+    if (cx !== undefined && old !== dz) {   // keep the point under the fingers where it was
+      var px = cx - view.sw / 2 - view.tx, py = cy - view.sh / 2 - view.ty;
+      view.tx -= px * (dz / old - 1); view.ty -= py * (dz / old - 1);
+    }
+    apply();
+  }
 
-      captureButton.addEventListener('click', captureFrame);
-      retakeButton.addEventListener('click', retake);
-      scanButton.addEventListener('click', recognizeText);
-      cancelScanButton.addEventListener('click', function () {
-        if (!activeRecognitionController) return;
-        activeRecognitionController.userCancelled = true;
-        activeRecognitionController.abort();
-        cancelScanButton.disabled = true;
-        setStatus('Cancelling text recognition.');
-      });
-      areaButton.addEventListener('click', function () {
-        selectArea = !selectArea;
-        updateSelectionState();
-        if (frozen && selectArea) positionDefaultSelection();
-      });
-      cameraButton.addEventListener('click', async function () {
-        if (devices.length < 2) return;
-        const wasFrozen = frozen;
-        const nextIndex = (deviceIndex + 1) % devices.length;
-        const opened = await openCamera(devices[nextIndex].deviceId);
-        if (opened && wasFrozen) setStatus('Camera switched. Capture a new image when ready.');
-      });
-      themeSelect.addEventListener('change', function () {
-        document.body.dataset.theme = themeSelect.value;
-        saveAccessibilityPreferences();
-      });
-      readerSize.addEventListener('input', function () {
-        readerSizeValue.value = readerSize.value + '%';
-        readerSizeValue.textContent = readerSizeValue.value;
-        output.style.fontSize = readerSize.value + '%';
-        saveAccessibilityPreferences();
-      });
-      readerSpacing.addEventListener('input', function () {
-        readerSpacingValue.value = Number(readerSpacing.value).toFixed(1) + '×';
-        readerSpacingValue.textContent = readerSpacingValue.value;
-        output.style.lineHeight = readerSpacing.value;
-        saveAccessibilityPreferences();
-      });
-      speechRate.addEventListener('input', function () {
-        speechRateValue.value = Number(speechRate.value).toFixed(1).replace(/\.0$/, '') + '×';
-        speechRateValue.textContent = speechRateValue.value;
-        if (currentUtterance) currentUtterance.rate = Number(speechRate.value);
-        saveAccessibilityPreferences();
-      });
-      speechVoice.addEventListener('change', saveAccessibilityPreferences);
-      autoRead.addEventListener('change', saveAccessibilityPreferences);
-      if ('speechSynthesis' in window) {
-        populateSpeechVoices();
-        window.speechSynthesis.addEventListener('voiceschanged', populateSpeechVoices);
-      } else {
-        speechVoice.disabled = true;
-      }
+  /* the part of the picture that is on screen right now, in the picture's own pixels */
+  function visibleCrop() {
+    var dz = view.z / view.nativeZ, cx = view.sw / 2 + view.tx, cy = view.sh / 2 + view.ty;
+    var u0 = Math.max(0, (0 - cx) / (view.cw * dz) + 0.5), u1 = Math.min(1, (view.sw - cx) / (view.cw * dz) + 0.5);
+    var v0 = Math.max(0, (0 - cy) / (view.ch * dz) + 0.5), v1 = Math.min(1, (view.sh - cy) / (view.ch * dz) + 0.5);
+    return { sx: u0 * media.w, sy: v0 * media.h, sw: Math.max(1, (u1 - u0) * media.w), sh: Math.max(1, (v1 - v0) * media.h) };
+  }
 
-      uploadButton.addEventListener('click', function () { uploadInput.click(); });
-      uploadInput.addEventListener('change', function () {
-        const file = uploadInput.files && uploadInput.files[0];
-        if (!file) return;
-        if (!file.type.startsWith('image/')) {
-          setStatus('Choose an image file such as JPEG, PNG, or WebP.');
-          return;
-        }
-        if (uploadedUrl) URL.revokeObjectURL(uploadedUrl);
-        uploadedUrl = URL.createObjectURL(file);
-        const image = new Image();
-        image.onload = function () {
-          sourceKind = 'file';
-          drawImageToCanvas(image, image.naturalWidth, image.naturalHeight);
-          setStatus(AI_AVAILABLE
-            ? 'Picture loaded. Adjust the yellow box around the words, then choose Recognize text.'
-            : 'Picture loaded. Open SnapReader on the Code A Difference website to recognize text.');
-          uploadInput.value = '';
-        };
-        image.onerror = function () {
-          setStatus('This picture could not be opened. Try another image.');
-          URL.revokeObjectURL(uploadedUrl);
-          uploadedUrl = null;
-        };
-        image.src = uploadedUrl;
-      });
+  /* pinch, drag, wheel */
+  var ptrs = new Map(), pinch0 = null, dragMoved = false;
+  stage.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button')) return;
+    stage.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); dragMoved = false;
+    if (ptrs.size === 2) { var a = Array.from(ptrs.values()); pinch0 = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), z: view.z }; }
+  });
+  stage.addEventListener('pointermove', function (e) {
+    var p = ptrs.get(e.pointerId); if (!p) return;
+    var r = stage.getBoundingClientRect();
+    if (ptrs.size === 2 && pinch0) {
+      p.x = e.clientX; p.y = e.clientY;
+      var a = Array.from(ptrs.values()), d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+      setZoom(pinch0.z * d / pinch0.d, (a[0].x + a[1].x) / 2 - r.left, (a[0].y + a[1].y) / 2 - r.top); dragMoved = true;
+    } else if (ptrs.size === 1) {
+      var dx = e.clientX - p.x, dy = e.clientY - p.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) dragMoved = true;
+      p.x = e.clientX; p.y = e.clientY;
+      if (view.z / view.nativeZ > 1.001) { view.tx += dx; view.ty += dy; apply(); }
+    }
+  });
+  function endPtr(e) { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; }
+  stage.addEventListener('pointerup', endPtr); stage.addEventListener('pointercancel', endPtr);
+  stage.addEventListener('wheel', function (e) { e.preventDefault(); var r = stage.getBoundingClientRect(); setZoom(view.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  new ResizeObserver(function () { layout(); paginate(true); }).observe(stage);
 
-      output.addEventListener('input', function () {
-        if (currentUtterance) stopSpeech();
-        updateOutputControls();
-      });
-      speechButton.addEventListener('click', speakOutput);
-      pauseButton.addEventListener('click', function () {
-        if (!currentUtterance || !('speechSynthesis' in window)) return;
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-          pauseButton.textContent = 'Pause reading';
-          setStatus('Reading resumed.');
-        } else {
-          window.speechSynthesis.pause();
-          pauseButton.textContent = 'Resume reading';
-          setStatus('Reading paused.');
-        }
-      });
-      stopButton.addEventListener('click', stopSpeech);
-      copyButton.addEventListener('click', async function () {
-        try {
-          await navigator.clipboard.writeText(output.value);
-          setStatus('Recognized text copied.');
-        } catch (_) {
-          output.focus();
-          output.select();
-          setStatus('Text selected. Use your device’s Copy command.');
-        }
-      });
+  /* -------------------------------------------------------------- camera */
+  var frozenMode = false;
+  function notice(title, text, show) { app.setAttribute('data-cam', show ? 'off' : 'on'); $('notice').hidden = !show; $('notice-title').textContent = title || ''; $('notice-text').textContent = text || ''; }
+  async function startCamera() {
+    stopCamera();
+    notice('', '', false);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { notice('No camera here', 'This browser can’t use a camera. You can still read a photo.', true); say('No camera. Choose a photo instead.', true); return; }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    } catch (e) {
+      var denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      notice(denied ? 'Camera is blocked' : 'Camera didn’t start', denied ? 'Allow the camera in your browser’s address bar, then press the button below. Or read a photo instead.' : 'Another app may be using it. Close it and try again, or read a photo instead.', true);
+      say(denied ? 'Camera is blocked.' : 'Camera didn’t start.', true); haveCamera = false; return;
+    }
+    haveCamera = true;
+    track = stream.getVideoTracks()[0];
+    caps = (track.getCapabilities && track.getCapabilities()) || {};
+    video.srcObject = stream;
+    await video.play().catch(function () {});
+    var st = track.getSettings ? track.getSettings() : {};
+    media = { w: video.videoWidth || st.width || 1280, h: video.videoHeight || st.height || 720 };
+    view = { z: 1, tx: 0, ty: 0, nativeZ: 1, cw: 0, ch: 0, sw: 0, sh: 0 };
+    $('btn-light').hidden = !caps.torch; torchOn = false; $('btn-light').setAttribute('aria-pressed', 'false');
+    try { var devs = await navigator.mediaDevices.enumerateDevices(); $('btn-flip').hidden = devs.filter(function (d) { return d.kind === 'videoinput'; }).length < 2; } catch (e) { /* ignore */ }
+    video.hidden = false; frozen.hidden = true; frozenMode = false;
+    layout();
+    say('Camera ready. Press Read.');
+  }
+  function stopCamera() { if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); } stream = null; track = null; caps = {}; }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { stopCamera(); window.speechSynthesis && speechSynthesis.cancel(); }
+    else if (!frozenMode) startCamera();
+  });
 
-      window.addEventListener('pagehide', function () {
-        stopCamera();
-        stopSpeech();
-        if (activeRecognitionController) activeRecognitionController.abort();
-        if (uploadedUrl) URL.revokeObjectURL(uploadedUrl);
-      });
+  /* ---------------------------------------------------------- the reader */
+  var tokens = [], lines = [], page = 0, pages = 1, W = 0, current = -1;
+  function paginate(keep) {
+    W = viewport.clientWidth;
+    flow.style.width = W + 'px'; flow.style.columnWidth = W + 'px';
+    pages = Math.max(1, Math.round(flow.scrollWidth / W));
+    if (!keep) page = 0;
+    page = Math.min(page, pages - 1);
+    showPage();
+  }
+  function showPage() {
+    flow.style.transform = 'translateX(' + (-page * W) + 'px)';
+    $('pageinfo').textContent = 'Page ' + (page + 1) + ' of ' + pages;
+    $('btn-prev').disabled = page <= 0; $('btn-next').disabled = page >= pages - 1;
+  }
+  function go(n) { page = Math.max(0, Math.min(pages - 1, n)); showPage(); }
+  function pageOf(el) { var x = el.getBoundingClientRect().left - flow.getBoundingClientRect().left + page * W; return Math.floor((x + 2) / W); }
 
-      applyAccessibilityPreferences();
-      updatePreview();
-      updateOutputControls();
-      setConfidence('Ready when you are.');
-      openCamera(null);
+  function buildText(found) {
+    // found: [{text, x, y, w, h}] in crop pixels, any order
+    var ls = found.filter(function (l) { return l.text && l.text.trim(); }).sort(function (a, b) { return (Math.abs(a.y - b.y) < Math.min(a.h, b.h) * 0.5) ? a.x - b.x : a.y - b.y; });
+    var avgH = ls.reduce(function (s, l) { return s + l.h; }, 0) / (ls.length || 1);
+    tokens = []; lines = [];
+    var html = '<p>', prev = null;
+    ls.forEach(function (l, li) {
+      var gap = prev ? l.y - (prev.y + prev.h) : 0;
+      var paraBreak = prev && gap > avgH * 0.9;
+      if (paraBreak) html += '</p><p>';
+      var words = l.text.trim().split(/\s+/);
+      lines.push({ box: l, first: tokens.length });
+      words.forEach(function (w, wi) {
+        var last = tokens[tokens.length - 1];
+        // join a word split across two lines: "read-" + "ing"
+        if (wi === 0 && last && !paraBreak && /[A-Za-z]-$/.test(last.t) && /^[a-z]/.test(w)) { last.t = last.t.slice(0, -1) + w; last.el.textContent = last.t; return; }
+        var i = tokens.length;
+        tokens.push({ t: w, line: li, para: wi === 0 && paraBreak });
+        html += '<span class="w" data-i="' + i + '">' + w.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span> ';
+      });
+      prev = l;
+    });
+    flow.innerHTML = html + '</p>';
+    flow.querySelectorAll('.w').forEach(function (el) { tokens[+el.getAttribute('data-i')].el = el; });
+    $('wc').textContent = tokens.length + (tokens.length === 1 ? ' word' : ' words');
+  }
+  flow.addEventListener('click', function (e) { var w = e.target.closest('.w'); if (w) speakFrom(+w.getAttribute('data-i')); });
+
+  /* ---------------------------------------------------------- read aloud */
+  var voices = [], speechState = 'idle', startAt = 0, chunkRun = 0, onToken = -1;
+  function loadVoices() {
+    if (!('speechSynthesis' in window)) return;
+    voices = speechSynthesis.getVoices().filter(function (v) { return /^en/i.test(v.lang); });
+    var sel = $('voice'); sel.innerHTML = '';
+    var def = document.createElement('option'); def.value = ''; def.textContent = 'Automatic'; sel.appendChild(def);
+    voices.forEach(function (v) { var o = document.createElement('option'); o.value = v.voiceURI; o.textContent = v.name + ' (' + v.lang + ')'; sel.appendChild(o); });
+    sel.value = S.voice;
+  }
+  if ('speechSynthesis' in window) { speechSynthesis.addEventListener('voiceschanged', loadVoices); loadVoices(); }
+  function setListenUI() {
+    var playing = speechState === 'playing';
+    $('ico-listen').toggleAttribute('hidden', playing); $('ico-pause').toggleAttribute('hidden', !playing);   // SVG has no .hidden property
+    $('listen-label').textContent = playing ? 'Pause' : (speechState === 'paused' ? 'Continue' : 'Listen');
+    $('btn-listen').setAttribute('data-h', playing ? 'pause' : 'listen');
+  }
+  function mark(i) {
+    if (current >= 0 && tokens[current]) { tokens[current].el.classList.remove('on'); var lb = boxes.children[tokens[current].line]; if (lb) lb.classList.remove('on'); }
+    current = i;
+    if (i < 0 || !tokens[i]) return;
+    tokens[i].el.classList.add('on');
+    var b = boxes.children[tokens[i].line]; if (b) b.classList.add('on');
+    var p = pageOf(tokens[i].el); if (p !== page) go(p);
+  }
+  function chunksFrom(i) {
+    var out = [], cur = null;
+    for (var k = i; k < tokens.length; k++) {
+      if (!cur || tokens[k].para || cur.len > 170 && /[.!?;:]$/.test(tokens[k - 1].t) || cur.len > 260) { cur = { start: k, offs: [], text: '', len: 0 }; out.push(cur); }
+      cur.offs.push(cur.text.length); cur.text += (cur.text ? ' ' : '') + tokens[k].t; cur.len = cur.text.length;
+    }
+    return out;
+  }
+  function speakFrom(i) {
+    if (!('speechSynthesis' in window) || !tokens.length) { say('Reading aloud isn’t available in this browser.', true); return; }
+    speechSynthesis.cancel();
+    var run = ++chunkRun, list = chunksFrom(Math.max(0, i)), k = 0;
+    speechState = 'playing'; setListenUI();
+    function next() {
+      if (run !== chunkRun) return;
+      if (k >= list.length) { speechState = 'idle'; startAt = 0; mark(-1); setListenUI(); say('Finished reading.'); return; }
+      var c = list[k++], u = new SpeechSynthesisUtterance(c.text);
+      u.rate = S.rate; u.lang = 'en-US';
+      var v = voices.filter(function (x) { return x.voiceURI === S.voice; })[0]; if (v) { u.voice = v; u.lang = v.lang; }
+      mark(c.start); onToken = c.start;
+      u.onboundary = function (e) {
+        if (run !== chunkRun || e.charIndex === undefined) return;
+        var j = 0; for (var q = 0; q < c.offs.length; q++) { if (c.offs[q] <= e.charIndex) j = q; else break; }
+        onToken = c.start + j; mark(onToken);
+      };
+      u.onend = next;
+      u.onerror = function (e) { if (run === chunkRun && e.error !== 'canceled' && e.error !== 'interrupted') { speechState = 'idle'; setListenUI(); say('Couldn’t read aloud. Try another voice in Settings.', true); } };
+      speechSynthesis.speak(u);
+    }
+    next();
+    say('Reading aloud.');
+  }
+  function pauseSpeaking() { if (speechState !== 'playing') return; chunkRun++; speechSynthesis.cancel(); startAt = Math.max(0, onToken); speechState = 'paused'; setListenUI(); say('Paused.'); }
+  function stopSpeaking() { chunkRun++; if ('speechSynthesis' in window) speechSynthesis.cancel(); speechState = 'idle'; startAt = 0; mark(-1); setListenUI(); }
+  $('btn-listen').addEventListener('click', function () {
+    if (speechState === 'playing') pauseSpeaking();
+    else speakFrom(speechState === 'paused' ? startAt : 0);
+  });
+
+  /* ------------------------------------------------------------ reading */
+  var ocr = { worker: null, loading: null, native: null };
+  function loadScript(src) { return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = function () { no(new Error('Couldn’t load the reading engine. Check your connection.')); }; document.head.appendChild(s); }); }
+  var progressCb = null;
+  async function getWorker() {
+    if (ocr.worker) return ocr.worker;
+    ocr.loading = ocr.loading || (async function () {
+      if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+      var w = await Tesseract.createWorker('eng', 1, {
+        langPath: 'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0_fast',
+        logger: function (m) { if (progressCb && m && typeof m.progress === 'number' && m.status === 'recognizing text') progressCb(Math.round(m.progress * 100)); }
+      });
+      await w.setParameters({ tessedit_pageseg_mode: '3', preserve_interword_spaces: '0' });
+      ocr.worker = w; return w;
     })();
-  </script>
+    try { return await ocr.loading; } catch (e) { ocr.loading = null; throw e; }
+  }
+  // get the engine ready while the person is still lining up the shot
+  setTimeout(function () { if (!('TextDetector' in window)) getWorker().catch(function () {}); }, 600);
+
+  function cropCanvas(src) {
+    var c = visibleCrop(), long = Math.max(c.sw, c.sh);
+    var scale = Math.max(0.6, Math.min(2.5, 1500 / long));
+    var cv = document.createElement('canvas'); cv.width = Math.round(c.sw * scale); cv.height = Math.round(c.sh * scale);
+    var x = cv.getContext('2d'); x.imageSmoothingQuality = 'high'; x.filter = 'grayscale(1) contrast(1.35)';
+    x.drawImage(src, c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
+    return { cv: cv, crop: c, scale: scale };
+  }
+  async function recognise(cv) {
+    if ('TextDetector' in window) {
+      try {
+        ocr.native = ocr.native || new TextDetector();
+        var r = await ocr.native.detect(cv);
+        if (r && r.length) return r.map(function (t) { var b = t.boundingBox; return { text: t.rawValue, x: b.x, y: b.y, w: b.width, h: b.height }; });
+      } catch (e) { /* fall through to the engine */ }
+    }
+    var w = await getWorker();
+    var res = await w.recognize(cv);
+    var d = res.data || {};
+    var ls = (d.lines || []).map(function (l) { var b = l.bbox; return { text: l.text, x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 }; });
+    if (!ls.length && d.text) ls = [{ text: d.text, x: 0, y: 0, w: cv.width, h: cv.height }];
+    return ls;
+  }
+
+  var busy = false;
+  async function readNow(source, wholeImage) {
+    if (busy) return;
+    busy = true;
+    stopSpeaking();
+    $('busy').hidden = false; $('busy-text').textContent = 'Reading…'; say('Reading…');
+    progressCb = function (p) { $('busy-text').textContent = 'Reading… ' + p + '%'; };
+    try {
+      var cw = source.videoWidth || source.width, chh = source.videoHeight || source.height;
+      media = { w: cw, h: chh };
+      if (!frozenMode) {                                     // freeze the frame so it can't move while it is read
+        frozen.width = cw; frozen.height = chh; frozen.getContext('2d').drawImage(source, 0, 0, cw, chh);
+        video.hidden = true; frozen.hidden = false; frozenMode = true; layout();
+      }
+      if (wholeImage) { view.z = 1; view.tx = 0; view.ty = 0; view.nativeZ = 1; apply(); }
+      var made = cropCanvas(frozen);
+      var found = await recognise(made.cv);
+      var text = found.map(function (l) { return l.text; }).join(' ').trim();
+      if (!text) { say('No words found. Move closer, add light, and try again.', true); feel('error'); backToCamera(true); return; }
+      buildText(found);
+      boxes.innerHTML = '';
+      lines.forEach(function (l, i) {
+        var b = l.box, d = document.createElement('div'); d.className = 'box';
+        var mx = made.crop.sx + b.x / made.scale, my = made.crop.sy + b.y / made.scale;
+        d.style.left = (mx / media.w * 100) + '%'; d.style.top = (my / media.h * 100) + '%';
+        d.style.width = (b.w / made.scale / media.w * 100) + '%'; d.style.height = (b.h / made.scale / media.h * 100) + '%';
+        d.addEventListener('click', function () { if (!dragMoved) speakFrom(lines[i].first); });
+        boxes.appendChild(d);
+      });
+      app.setAttribute('data-mode', 'result'); $('tips').hidden = true; $('btn-listen').focus({ preventScroll: true });
+      requestAnimationFrame(function () { layout(); paginate(false); });
+      say('Found ' + tokens.length + ' words.'); feel('found');
+      if (S.auto) setTimeout(function () { speakFrom(0); }, 250);
+    } catch (e) {
+      say(e && e.message ? e.message : 'Reading didn’t work. Try again.', true); feel('error'); backToCamera(true);
+    } finally { $('busy').hidden = true; progressCb = null; busy = false; }
+  }
+  function backToCamera(quiet) {
+    stopSpeaking();
+    boxes.innerHTML = ''; tokens = []; lines = []; flow.innerHTML = '';
+    app.setAttribute('data-mode', 'live'); $('tips').hidden = false;
+    frozen.hidden = true; frozenMode = false;
+    if (haveCamera && stream) { video.hidden = false; media = { w: video.videoWidth || media.w, h: video.videoHeight || media.h }; layout(); if (!quiet) say('Camera ready. Press Read.'); }
+    else startCamera();
+    $('btn-read').focus({ preventScroll: true });
+  }
+
+  /* ------------------------------------------------------------- buttons */
+  $('btn-read').addEventListener('click', function () { if (haveCamera && !frozenMode) readNow(video, false); else if (!haveCamera) say('The camera isn’t on. Choose a photo, or allow the camera.', true); });
+  $('btn-camera').addEventListener('click', function () { backToCamera(false); });
+  $('btn-zoomin').addEventListener('click', function () { setZoom(view.z * 1.4); say('Zoom ' + view.z.toFixed(1).replace(/\.0$/, '') + '×'); });
+  $('btn-zoomout').addEventListener('click', function () { setZoom(view.z / 1.4); say('Zoom ' + view.z.toFixed(1).replace(/\.0$/, '') + '×'); });
+  $('btn-look').addEventListener('click', function () { look = (look + 1) % LOOKS.length; applyFilter(); say('Look: ' + LOOKS[look][0]); });
+  $('btn-light').addEventListener('click', function () {
+    torchOn = !torchOn; $('btn-light').setAttribute('aria-pressed', String(torchOn));
+    if (track) track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () { say('This camera can’t turn its light on.', true); });
+    say(torchOn ? 'Light on.' : 'Light off.');
+  });
+  $('btn-flip').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startCamera(); });
+  $('btn-retry').addEventListener('click', function () { startCamera(); });
+  [$('btn-photo'), $('btn-photo2')].forEach(function (b) { b.addEventListener('click', function () { $('file').click(); }); });
+  $('btn-prev').addEventListener('click', function () { go(page - 1); });
+  $('btn-next').addEventListener('click', function () { go(page + 1); });
+  $('btn-smaller').addEventListener('click', function () { S.fs = Math.max(18, S.fs - 4); save(); applyLook(); paginate(true); say('Text size ' + S.fs); });
+  $('btn-bigger').addEventListener('click', function () { S.fs = Math.min(84, S.fs + 4); save(); applyLook(); paginate(true); say('Text size ' + S.fs); });
+  var SPEEDS = [0.8, 1, 1.25, 1.5, 0.6];
+  function showSpeed() { $('speed-val').textContent = (+S.rate.toFixed(2)) + '×'; $('rate').value = S.rate; $('rate-val').textContent = (+S.rate.toFixed(2)) + '×'; }
+  $('btn-speed').addEventListener('click', function () {
+    var i = SPEEDS.findIndex(function (s) { return Math.abs(s - S.rate) < 0.06; });
+    S.rate = SPEEDS[(i + 1) % SPEEDS.length]; save(); showSpeed(); say('Speed ' + S.rate + '×');
+    if (speechState === 'playing') speakFrom(Math.max(0, onToken));
+  });
+
+  /* photos: choose or drop */
+  async function readFile(file) {
+    if (!file || !/^image\//.test(file.type)) { say('Choose a picture to read.', true); return; }
+    try {
+      var bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      var k = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+      frozen.width = Math.round(bmp.width * k); frozen.height = Math.round(bmp.height * k);
+      frozen.getContext('2d').drawImage(bmp, 0, 0, frozen.width, frozen.height);
+      stopCamera(); video.hidden = true; frozen.hidden = false; frozenMode = true; notice('', '', false);
+      media = { w: frozen.width, h: frozen.height }; view.z = 1; view.nativeZ = 1; view.tx = 0; view.ty = 0; layout();
+      readNow(frozen, true);
+    } catch (e) { say('That picture couldn’t be opened.', true); feel('error'); }
+  }
+  $('file').addEventListener('change', function (e) { var f = e.target.files[0]; e.target.value = ''; readFile(f); });
+  ['dragenter', 'dragover'].forEach(function (n) { stage.addEventListener(n, function (e) { e.preventDefault(); stage.classList.add('drag'); }); });
+  ['dragleave', 'drop'].forEach(function (n) { stage.addEventListener(n, function (e) { e.preventDefault(); stage.classList.remove('drag'); if (n === 'drop') readFile(e.dataTransfer.files[0]); }); });
+  document.addEventListener('paste', function (e) { var f = Array.from(e.clipboardData && e.clipboardData.files || [])[0]; if (f) readFile(f); });
+
+  /* settings */
+  var dlg = $('settings');
+  $('btn-settings').addEventListener('click', function () { syncSettings(); dlg.showModal(); });
+  $('settings-x').addEventListener('click', function () { dlg.close(); });
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+  function syncSettings() {
+    document.querySelectorAll('#seg-theme .btn').forEach(function (b) { var on = b.dataset.theme === S.theme; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); });
+    document.querySelectorAll('#seg-spacing .btn').forEach(function (b) { var on = b.dataset.spacing === S.spacing; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); });
+    $('opt-haptics').checked = S.haptics; $('opt-sounds').checked = S.sounds; $('opt-auto').checked = S.auto; $('voice').value = S.voice; showSpeed();
+    $('haptic-note').textContent = canVibrate ? 'Each button vibrates in its own pattern.' : (isIOS ? 'iPhones give a light tap. Patterns are limited, so turn on Sounds to tell buttons apart.' : 'This device can’t vibrate. Turn on Sounds to tell buttons apart.');
+  }
+  $('seg-theme').addEventListener('click', function (e) { var b = e.target.closest('[data-theme]'); if (!b) return; S.theme = b.dataset.theme; save(); applyLook(); syncSettings(); });
+  $('seg-spacing').addEventListener('click', function (e) { var b = e.target.closest('[data-spacing]'); if (!b) return; S.spacing = b.dataset.spacing; save(); applyLook(); syncSettings(); paginate(true); });
+  $('voice').addEventListener('change', function (e) { S.voice = e.target.value; save(); });
+  $('rate').addEventListener('input', function (e) { S.rate = +e.target.value; save(); showSpeed(); });
+  $('opt-haptics').addEventListener('change', function (e) { S.haptics = e.target.checked; save(); if (S.haptics) feel('found'); });
+  $('opt-sounds').addEventListener('change', function (e) { S.sounds = e.target.checked; save(); if (S.sounds) feel('found'); });
+  $('opt-auto').addEventListener('change', function (e) { S.auto = e.target.checked; save(); });
+
+  /* keyboard */
+  document.addEventListener('keydown', function (e) {
+    if (dlg.open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    var k = e.key.toLowerCase();
+    if (k === 'r' && app.dataset.mode === 'live') { feel('read'); $('btn-read').click(); }
+    else if (k === 'l' && app.dataset.mode === 'result') { feel(speechState === 'playing' ? 'pause' : 'listen'); $('btn-listen').click(); }
+    else if (k === '+' || k === '=') { feel('zoomin'); $('btn-zoomin').click(); }
+    else if (k === '-') { feel('zoomout'); $('btn-zoomout').click(); }
+    else if (k === 'arrowright' && app.dataset.mode === 'result') { go(page + 1); }
+    else if (k === 'arrowleft' && app.dataset.mode === 'result') { go(page - 1); }
+    else if (k === 'escape' && app.dataset.mode === 'result') { feel('camera'); backToCamera(false); }
+  });
+
+  /* go */
+  applyLook(); applyFilter(); showSpeed(); setListenUI();
+  new ResizeObserver(function () { if (app.dataset.mode === 'result') paginate(true); }).observe(viewport);
+  startCamera();
+})();
+</script>
 </body>
 </html>
