@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
 <title>Visual Reading | See and hear any text</title>
-<meta name="description" content="Point your camera at any text. Zoom in, change the contrast, and have it read aloud with each word highlighted. Free, private, runs in your browser.">
+<meta name="description" content="Point your camera at any text. The words light up on the picture, zoom in, read aloud with each word highlighted, and an optional AI describes the picture. Words are read on your device with Tesseract.js.">
 <style>
   :root {
     color-scheme: dark;
@@ -18,7 +18,7 @@
   html[data-theme="light"] { color-scheme: light; --bg: #f6f4ef; --panel: #ffffff; --ink: #16181d; --mute: #444b57; --line: #8c93a0; --accent: #0b4fc4; --on-accent: #ffffff; --danger: #b00020; }
   html[data-theme="contrast"] { --bg: #000; --panel: #000; --ink: #ffee00; --mute: #ffffff; --line: #ffee00; --accent: #ffee00; --on-accent: #000; --danger: #ff8a80; }
   html[data-theme="cream"] { color-scheme: light; --bg: #f3e7cc; --panel: #fbf3df; --ink: #25221b; --mute: #4a4538; --line: #8a7f63; --accent: #8a3b00; --on-accent: #ffffff; --danger: #a40000; }
-  html[data-spacing="wide"] #flow { letter-spacing: .06em; word-spacing: .22em; line-height: 1.85; }
+  html[data-spacing="wide"] #flow, html[data-spacing="wide"] #dflow { letter-spacing: .06em; word-spacing: .22em; line-height: 1.85; }
 
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-tap-highlight-color: transparent; }
@@ -29,18 +29,27 @@
   .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .skip { position: absolute; left: 8px; top: -80px; z-index: 50; padding: 12px 16px; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-weight: 700; }
   .skip:focus { top: 8px; }
+  a { color: var(--accent); }
 
   /* ---------- the whole app is one screen: nothing scrolls ---------- */
   #app { height: 100dvh; display: grid; gap: var(--gap); padding: calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
     grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto; grid-template-areas: "top" "stage" "reader" "dock"; }
+  #describe { display: none; }
   #app[data-mode="live"] #reader { display: none; }
   #app[data-mode="live"] #meta, #app[data-mode="live"] #viewport { display: none; }
   #app[data-mode="result"] #tips { display: none; }
   #app[data-mode="result"] { grid-template-rows: auto minmax(80px, 24%) minmax(0, 1fr) auto; }
+  /* three views of one picture: the words on the photo, the words in big type, and what the AI sees */
+  #app[data-mode="result"][data-view="picture"] { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top" "stage" "dock"; }
+  #app[data-mode="result"][data-view="picture"] #reader, #app[data-mode="result"][data-view="picture"] #describe { display: none; }
+  #app[data-mode="result"][data-view="describe"] #reader { display: none; }
+  #app[data-mode="result"][data-view="describe"] #describe { display: flex; grid-area: reader; }
+  #app[data-mode="result"][data-view="describe"] { grid-template-rows: auto minmax(70px, 20%) minmax(0, 1fr) auto; }
   @media (min-aspect-ratio: 6/5) and (min-width: 720px) {
     #app { grid-template-columns: minmax(0, 1fr) minmax(340px, 38vw); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top" "stage reader" "dock dock"; }
     #app[data-mode="live"] #reader { display: flex; }
-    #app[data-mode="result"] { grid-template-rows: auto minmax(0, 1fr) auto; }
+    #app[data-mode="result"], #app[data-mode="result"][data-view="describe"] { grid-template-rows: auto minmax(0, 1fr) auto; }
+    #app[data-mode="result"][data-view="picture"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "stage" "dock"; }
   }
 
   .top { grid-area: top; display: flex; align-items: center; gap: 10px; min-height: 56px; }
@@ -53,11 +62,18 @@
   .btn svg { width: 26px; height: 26px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   .btn svg.fill { fill: currentColor; stroke-width: 1.4; }
   .btn:active { transform: scale(.97); }
-  .btn[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  .btn[aria-pressed="true"], .btn[aria-selected="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
   .btn.primary { flex-direction: row; gap: 12px; min-height: 68px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-size: 22px; flex: 1; }
   .btn.primary svg { width: 30px; height: 30px; }
   .btn.wide { flex-direction: row; gap: 8px; padding: 6px 16px; font-size: 16px; }
+  .btn.tab { flex-direction: row; gap: 6px; min-height: 52px; font-size: 15px; padding: 6px 4px; min-width: 0; }
+  .btn.tab svg { width: 22px; height: 22px; }
+  .btn.tab .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--mute); flex: none; }
+  .btn.tab .dot.busy { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .btn.tab .dot.ready { background: #4cd08a; }
+  .btn.tab .dot.off { display: none; }
+  @keyframes pulse { 50% { opacity: .25; } }
   [hidden] { display: none !important; }
 
   /* ---------- the camera / photo ---------- */
@@ -65,8 +81,8 @@
   #content { position: absolute; transform-origin: 50% 50%; will-change: transform; }
   #content video, #content canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   #boxes { position: absolute; inset: 0; pointer-events: none; }
-  .box { position: absolute; border: 2px solid var(--accent); border-radius: 4px; background: transparent; pointer-events: auto; cursor: pointer; }
-  .box.on { background: rgba(255, 209, 102, .35); box-shadow: 0 0 0 3px var(--bg); }
+  .box { position: absolute; border: 2px solid var(--accent); border-radius: 3px; background: rgba(255, 209, 102, .10); pointer-events: auto; cursor: pointer; }
+  .box.on { background: rgba(255, 209, 102, .55); box-shadow: 0 0 0 3px var(--accent); z-index: 2; }
   #zoomtag { position: absolute; left: 10px; bottom: 10px; padding: 6px 12px; border-radius: 12px; background: rgba(0,0,0,.75); color: #fff; font-weight: 800; font-size: 16px; pointer-events: none; }
   #busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.55); color: #fff; font-size: 22px; font-weight: 800; text-align: center; padding: 20px; }
   #busy .ring { width: 44px; height: 44px; margin: 0 auto 14px; border: 5px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin 900ms linear infinite; }
@@ -78,17 +94,28 @@
   #drop { position: absolute; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.7); color: #fff; font-size: 26px; font-weight: 800; border: 4px dashed var(--accent); border-radius: 20px; }
   #stage.drag #drop { display: grid; }
 
-  /* ---------- the text: pages, never scrolling ---------- */
-  #reader { grid-area: reader; display: flex; flex-direction: column; min-height: 0; border-radius: 20px; border: 2px solid var(--line); background: var(--panel); overflow: hidden; }
-  #meta { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px; font-size: 15px; font-weight: 700; color: var(--mute); border-bottom: 2px solid var(--line); }
-  #viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; margin: 12px 16px; }
-  #flow { height: 100%; position: relative; font-size: var(--fs); line-height: 1.55; font-weight: 600; column-gap: 0; column-fill: auto; transition: transform .25s ease; hyphens: manual; }
-  #flow p { margin: 0 0 .7em; break-inside: auto; }
+  /* ---------- the text and the description: pages, never scrolling ---------- */
+  #reader, #describe { grid-area: reader; display: flex; flex-direction: column; min-height: 0; border-radius: 20px; border: 2px solid var(--line); background: var(--panel); overflow: hidden; }
+  #describe { display: none; }
+  .meta { display: flex; justify-content: space-between; gap: 10px; padding: 8px 14px; font-size: 15px; font-weight: 700; color: var(--mute); border-bottom: 2px solid var(--line); }
+  .viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; margin: 12px 16px; }
+  .flow { height: 100%; position: relative; font-size: var(--fs); line-height: 1.55; font-weight: 600; column-gap: 0; column-fill: auto; transition: transform .25s ease; hyphens: manual; }
+  .flow p { margin: 0 0 .7em; break-inside: auto; }
   .w { cursor: pointer; border-radius: 6px; }
   .w.on { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 4px var(--accent); text-decoration: underline; text-decoration-thickness: 4px; text-underline-offset: 4px; }
   #tips { padding: 18px; font-size: 20px; line-height: 1.5; color: var(--mute); }
   #tips strong { color: var(--ink); }
   #tips li { margin: 0 0 10px 22px; }
+  #tips .note { margin-top: 14px; font-size: 16px; }
+  .fine { padding: 8px 14px; border-top: 2px solid var(--line); font-size: 14px; line-height: 1.35; color: var(--mute); }
+  .fine a { font-weight: 700; }
+
+  /* the describe panel's own states: switched off, needs a key, working, failed */
+  #dstate { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px; text-align: center; }
+  #dstate h2 { font-size: 24px; line-height: 1.2; }
+  #dstate p { font-size: 18px; color: var(--mute); max-width: 36ch; line-height: 1.4; }
+  #dstate input { width: min(420px, 100%); min-height: 56px; padding: 0 14px; border: 2px solid var(--line); border-radius: 14px; background: var(--bg); font-size: 18px; }
+  #dstate .ring { width: 36px; height: 36px; border: 4px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 900ms linear infinite; }
 
   /* ---------- the controls ---------- */
   #dock { grid-area: dock; display: flex; flex-direction: column; gap: var(--gap); }
@@ -96,38 +123,47 @@
   .row > .btn:not(.primary) { flex: 1 1 0; }
   .row > .btn.fixed { flex: 0 0 auto; }
   #app[data-mode="live"] .only-result, #app[data-mode="result"] .only-live { display: none; }
+  /* zoom and looks work on the live camera and on the picture view of a result */
+  #app[data-mode="result"] .zoomrow { display: flex; }
+  #app[data-mode="result"]:not([data-view="picture"]) .zoomrow { display: none; }
+  #app[data-mode="result"] #btn-light, #app[data-mode="result"] #btn-flip { display: none; }
+  #app[data-view="picture"] .nopic, #app[data-view="describe"] .nodesc { display: none; }
   /* no camera: the way forward is a photo, so that is the one big button */
   #app[data-cam="off"] #btn-read, #app[data-cam="off"] .zoomrow { display: none; }
+  #app[data-cam="off"][data-mode="result"] .zoomrow { display: none; }
   #app[data-cam="off"] #btn-photo { flex: 1; flex-direction: row; gap: 12px; min-height: 68px; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-size: 22px; }
 
-  /* ---------- settings ---------- */
+  /* ---------- settings and the AI notice ---------- */
   dialog { width: min(560px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); padding: 0; border: 2px solid var(--accent); border-radius: 22px; background: var(--bg); color: var(--ink); overflow: hidden; }
   dialog::backdrop { background: rgba(0,0,0,.7); }
   .dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 24px); }
   .dlg header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 2px solid var(--line); }
   .dlg h2 { font-size: 22px; }
-  .dlg .body { padding: 14px 18px; overflow: auto; display: flex; flex-direction: column; gap: 18px; }
+  .dlg .body { padding: 14px 18px; overflow: auto; display: flex; flex-direction: column; gap: 16px; }
   .dlg fieldset { border: 0; padding: 0; }
   .dlg legend { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
   .seg { display: flex; flex-wrap: wrap; gap: 8px; }
   .seg .btn { flex: 1 1 110px; flex-direction: row; min-height: 52px; font-size: 16px; }
   .field { display: flex; flex-direction: column; gap: 8px; font-size: 17px; font-weight: 700; }
-  .field select { min-height: 52px; padding: 0 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--panel); font-size: 17px; }
+  .field select, .field input[type="password"], .field input[type="text"] { min-height: 52px; padding: 0 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--panel); font-size: 17px; }
   .field input[type="range"] { width: 100%; height: 36px; accent-color: var(--accent); }
   .sw { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; font-size: 17px; font-weight: 700; }
-  .sw input { width: 30px; height: 30px; accent-color: var(--accent); }
+  .sw input { width: 30px; height: 30px; accent-color: var(--accent); flex: none; }
   .hint { font-size: 15px; color: var(--mute); font-weight: 500; line-height: 1.4; }
+  .notice-box { padding: 12px 14px; border: 2px solid var(--accent); border-radius: 14px; font-size: 16px; line-height: 1.45; }
+  .notice-box strong { color: var(--accent); }
+  .linklike { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
   kbd { padding: 1px 7px; border: 2px solid var(--line); border-radius: 7px; font: 700 14px var(--sans); }
-  .dlg footer { padding: 12px 18px; border-top: 2px solid var(--line); }
+  .dlg footer { padding: 12px 18px; border-top: 2px solid var(--line); display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 
-  @media (max-height: 560px) and (orientation: landscape) { .btn { min-height: 52px; } .btn.primary { min-height: 56px; font-size: 19px; } }
-  @media (prefers-reduced-motion: reduce) { #flow { transition: none; } #busy .ring { animation: none; border-top-color: rgba(255,255,255,.3); } .btn:active { transform: none; } }
+  @media (max-height: 560px) and (orientation: landscape) { .btn { min-height: 52px; } .btn.primary { min-height: 56px; font-size: 19px; } .btn.tab { min-height: 44px; } }
+  @media (prefers-reduced-motion: reduce) { .flow { transition: none; } #busy .ring, #dstate .ring { animation: none; border-top-color: rgba(255,255,255,.3); } .btn:active { transform: none; } .btn.tab .dot.busy { animation: none; } }
 </style>
 </head>
 <body>
 <a class="skip" href="#btn-read">Skip to the Read button</a>
 
-<div id="app" data-mode="live">
+<div id="app" data-mode="live" data-view="picture">
   <header class="top">
     <h1>Visual Reading</h1>
     <p id="status" role="status" aria-live="polite">Starting the camera…</p>
@@ -156,17 +192,25 @@
   </section>
 
   <section id="reader" aria-label="Text that was read">
-    <div id="meta"><span id="pageinfo">Page 1 of 1</span><span id="wc"></span></div>
-    <div id="viewport"><div id="flow" lang="en"></div></div>
+    <div class="meta" id="meta"><span id="pageinfo">Page 1 of 1</span><span id="wc"></span></div>
+    <div class="viewport" id="viewport"><div class="flow" id="flow" lang="en"></div></div>
     <div id="tips">
       <p><strong>How to use it</strong></p>
       <ul>
-        <li>Point the camera at some words.</li>
-        <li>Press <strong>Read</strong>. They appear here in big letters and are read to you.</li>
-        <li>Zoom with the + and − buttons, or pinch.</li>
-        <li><strong>Look</strong> changes the contrast so words stand out.</li>
+        <li>Point the camera at some words and press <strong>Read</strong>.</li>
+        <li>The words light up on the picture and are read to you. Tap a word to start from there.</li>
+        <li>Zoom with + and −, or pinch. <strong>Look</strong> changes the contrast.</li>
+        <li><strong>Describe</strong> shows what an AI sees in the picture, ready as soon as you take it (switch it on in Settings).</li>
       </ul>
+      <p class="note">Words are read on your device. Only if you switch on picture descriptions is the picture sent to a third-party AI provider.</p>
     </div>
+  </section>
+
+  <section id="describe" aria-label="What the AI sees in the picture">
+    <div class="meta"><span id="dpageinfo">Picture description</span><span id="dwc"></span></div>
+    <div id="dstate" hidden></div>
+    <div class="viewport" id="dviewport"><div class="flow" id="dflow" lang="en"></div></div>
+    <p class="fine" id="dfine">Described by a <strong>third-party AI provider</strong> through the Code A Difference AI service. The provider handles your picture under <strong>its own Terms of Service and Privacy Policy</strong>. AI can make mistakes. <button type="button" class="linklike" id="d-terms">Providers and their terms</button></p>
   </section>
 
   <nav id="dock" aria-label="Controls">
@@ -180,7 +224,7 @@
         Photo
       </button>
     </div>
-    <div class="row only-live zoomrow">
+    <div class="row zoomrow">
       <button class="btn" id="btn-zoomout" data-h="zoomout" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg>Zoom out</button>
       <button class="btn" id="btn-zoomin" data-h="zoomin" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg>Zoom in</button>
       <button class="btn" id="btn-look" data-h="look" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" class="fill" fill="currentColor"/></svg><span id="look-label">Look: Normal</span></button>
@@ -188,6 +232,17 @@
       <button class="btn" id="btn-flip" data-h="flip" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>Flip</button>
     </div>
 
+    <div class="row only-result" role="tablist" aria-label="What to look at">
+      <button class="btn tab" id="tab-picture" data-h="tabpic" role="tab" type="button" aria-selected="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 12h10M7 15h6"/></svg>Picture
+      </button>
+      <button class="btn tab" id="tab-text" data-h="tabtext" role="tab" type="button" aria-selected="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Big text
+      </button>
+      <button class="btn tab" id="tab-describe" data-h="tabdesc" role="tab" type="button" aria-selected="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 5.3L20 9l-4.4 3.8L17 19l-5-3-5 3 1.4-6.2L4 9l5.8-.7z"/></svg>Describe<span class="dot off" id="ddot" aria-hidden="true"></span><span class="sr" id="dready"></span>
+      </button>
+    </div>
     <div class="row only-result">
       <button class="btn primary" id="btn-listen" data-h="listen" type="button">
         <svg class="fill" viewBox="0 0 24 24" aria-hidden="true" id="ico-listen"><polygon points="6 3 20 12 6 21 6 3"/></svg>
@@ -200,10 +255,10 @@
       </button>
     </div>
     <div class="row only-result">
-      <button class="btn" id="btn-prev" data-h="prev" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>Back</button>
-      <button class="btn" id="btn-next" data-h="next" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>Next</button>
-      <button class="btn" id="btn-smaller" data-h="smaller" type="button"><span aria-hidden="true" style="font-size:18px">A</span>Smaller</button>
-      <button class="btn" id="btn-bigger" data-h="bigger" type="button"><span aria-hidden="true" style="font-size:28px;line-height:1">A</span>Bigger</button>
+      <button class="btn nopic" id="btn-prev" data-h="prev" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>Back</button>
+      <button class="btn nopic" id="btn-next" data-h="next" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>Next</button>
+      <button class="btn nopic" id="btn-smaller" data-h="smaller" type="button"><span aria-hidden="true" style="font-size:18px">A</span>Smaller</button>
+      <button class="btn nopic" id="btn-bigger" data-h="bigger" type="button"><span aria-hidden="true" style="font-size:28px;line-height:1">A</span>Bigger</button>
       <button class="btn" id="btn-speed" data-h="speed" type="button"><span aria-hidden="true" id="speed-val" style="font-size:20px">1×</span>Speed</button>
     </div>
   </nav>
@@ -216,6 +271,22 @@
   <div class="dlg">
     <header><h2 id="settings-title">Settings</h2><button class="btn wide" data-h="close" id="settings-x" type="button" style="min-height:52px">Done</button></header>
     <div class="body">
+      <fieldset><legend>After a picture is taken, show</legend>
+        <div class="seg" role="radiogroup" aria-label="First view" id="seg-view">
+          <button class="btn" type="button" role="radio" data-h="theme" data-view="picture">The picture, words lit up</button>
+          <button class="btn" type="button" role="radio" data-h="theme" data-view="text">Big text</button>
+        </div>
+      </fieldset>
+      <label class="sw"><span>Start reading aloud as soon as the words are found</span><input type="checkbox" id="opt-auto"></label>
+      <div class="field"><label for="voice">Voice</label><select id="voice"></select></div>
+      <div class="field"><label for="rate">Reading speed: <span id="rate-val">1×</span></label><input type="range" id="rate" min="0.5" max="1.8" step="0.1" value="1"></div>
+
+      <fieldset><legend>Describe the picture with AI</legend>
+        <label class="sw"><span>Describe every picture (sent to a third-party AI)</span><input type="checkbox" id="opt-ai"></label>
+        <p class="hint" id="ai-where" hidden>Picture descriptions work when Visual Reading is opened on the Code A Difference website.</p>
+        <p class="notice-box" style="margin-top:10px"><strong>Third-party AI.</strong> A picture you describe is sent through the Code A Difference AI service to a third-party AI provider, and is processed under that provider’s own Terms of Service and Privacy Policy. <button type="button" class="linklike" id="s-terms">See the providers and their terms</button></p>
+      </fieldset>
+
       <fieldset><legend>Colours</legend>
         <div class="seg" role="radiogroup" aria-label="Colours" id="seg-theme">
           <button class="btn" type="button" role="radio" data-h="theme" data-theme="dark">Dark</button>
@@ -230,19 +301,37 @@
           <button class="btn" type="button" role="radio" data-h="theme" data-spacing="wide">Wide, easier to read</button>
         </div>
       </fieldset>
-      <div class="field"><label for="voice">Voice</label><select id="voice"></select></div>
-      <div class="field"><label for="rate">Reading speed: <span id="rate-val">1×</span></label><input type="range" id="rate" min="0.5" max="1.8" step="0.1" value="1"></div>
       <fieldset><legend>Feedback when you press a button</legend>
         <label class="sw"><span>Vibration (every button feels different)</span><input type="checkbox" id="opt-haptics"></label>
         <label class="sw"><span>Sounds (every button sounds different)</span><input type="checkbox" id="opt-sounds"></label>
         <p class="hint" id="haptic-note"></p>
       </fieldset>
-      <label class="sw"><span>Start reading aloud as soon as the words are found</span><input type="checkbox" id="opt-auto"></label>
       <fieldset><legend>Keyboard</legend>
-        <p class="hint"><kbd>R</kbd> read &nbsp; <kbd>L</kbd> listen or pause &nbsp; <kbd>+</kbd> <kbd>−</kbd> zoom &nbsp; <kbd>←</kbd> <kbd>→</kbd> pages &nbsp; <kbd>Esc</kbd> back to the camera</p>
+        <p class="hint"><kbd>R</kbd> read &nbsp; <kbd>L</kbd> listen or pause &nbsp; <kbd>P</kbd> picture &nbsp; <kbd>T</kbd> big text &nbsp; <kbd>D</kbd> describe &nbsp; <kbd>+</kbd> <kbd>−</kbd> zoom &nbsp; <kbd>←</kbd> <kbd>→</kbd> pages &nbsp; <kbd>Esc</kbd> back to the camera</p>
       </fieldset>
-      <p class="hint">Everything happens on your device. Pictures and words are never uploaded.</p>
+      <p class="hint">Reading the words happens on your device with Tesseract.js: nothing is uploaded for that. Pictures are only sent anywhere (to a third-party AI provider) if you switch on “Describe every picture”.</p>
     </div>
+  </div>
+</dialog>
+
+<dialog id="ai-consent" aria-labelledby="ai-consent-title">
+  <div class="dlg">
+    <header><h2 id="ai-consent-title">Before the AI sees your pictures</h2></header>
+    <div class="body">
+      <p class="notice-box"><strong>Your pictures leave this device.</strong> When this is on, every picture you take is sent to the <strong>Code A Difference AI service</strong>, which passes it to a <strong>third-party AI provider</strong> to be described. That provider processes the picture under <strong>its own Terms of Service and Privacy Policy</strong>, not ours. We don’t keep your pictures, but we can’t see, change or delete what the provider keeps.</p>
+      <p class="hint">Which provider answers can change from day to day. The ones used are Google (Gemini), OpenAI, Anthropic and similar services. Read their terms:</p>
+      <p class="hint" style="line-height:1.8"><a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener noreferrer">Google</a> (<a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">privacy</a>), <a href="https://openai.com/policies/terms-of-use" target="_blank" rel="noopener noreferrer">OpenAI</a> (<a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener noreferrer">privacy</a>), <a href="https://www.anthropic.com/legal/consumer-terms" target="_blank" rel="noopener noreferrer">Anthropic</a> (<a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener noreferrer">privacy</a>).</p>
+      <ul class="hint" style="margin-left:20px;display:flex;flex-direction:column;gap:6px">
+        <li>Don’t take pictures of private papers, IDs, health or money details, or of people who haven’t agreed.</li>
+        <li>The AI can be wrong. Don’t rely on it where a mistake would hurt.</li>
+        <li>You can switch this off any time in Settings. Reading the words never uses the AI: that happens on your device.</li>
+      </ul>
+      <label class="sw" id="ai-agree-row"><span>I understand, and I agree to the AI providers’ terms and privacy policies.</span><input type="checkbox" id="ai-agree"></label>
+    </div>
+    <footer>
+      <button class="btn wide" id="ai-no" data-h="close" type="button">Not now</button>
+      <button class="btn wide" id="ai-yes" data-h="found" type="button" disabled style="border-color:var(--accent);background:var(--accent);color:var(--on-accent)">Turn on descriptions</button>
+    </footer>
   </div>
 </dialog>
 
@@ -251,14 +340,17 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var app = $('app'), stage = $('stage'), content = $('content'), video = $('video'), frozen = $('frozen'), boxes = $('boxes');
-  var statusEl = $('status'), flow = $('flow'), viewport = $('viewport');
+  var statusEl = $('status');
 
   /* ------------------------------------------------------------ settings */
-  var S = { theme: 'dark', spacing: 'normal', voice: '', rate: 1, haptics: true, sounds: false, auto: true, fs: 30 };
+  var S = { theme: 'dark', spacing: 'normal', voice: '', rate: 1, haptics: true, sounds: false, auto: true, fs: 30, view: 'picture' };
+  var AI = { on: false, agreedAt: 0 };               // on only after the notice was accepted
   try { Object.assign(S, JSON.parse(localStorage.getItem('vr.settings') || '{}')); } catch (e) { /* private mode */ }
+  try { Object.assign(AI, JSON.parse(localStorage.getItem('vr.ai') || '{}')); } catch (e) { /* private mode */ }
   var scaleAttr = parseFloat(document.documentElement.getAttribute('data-scale') || '1');
   if (!localStorage.getItem('vr.settings') && scaleAttr > 1) S.fs = Math.round(S.fs * Math.min(scaleAttr, 1.5));
   function save() { try { localStorage.setItem('vr.settings', JSON.stringify(S)); } catch (e) { /* ignore */ } }
+  function saveAI() { try { localStorage.setItem('vr.ai', JSON.stringify(AI)); } catch (e) { /* ignore */ } }
   function applyLook() {
     document.documentElement.setAttribute('data-theme', S.theme);
     document.documentElement.setAttribute('data-spacing', S.spacing);
@@ -274,12 +366,14 @@
     read: [35, 50, 35, 50, 90], photo: [20, 40, 20, 40, 20], zoomin: [10, 30, 18, 30, 28], zoomout: [28, 30, 18, 30, 10],
     look: [22, 55, 22], light: [60], flip: [20, 35, 60], listen: [18, 40, 70], pause: [70, 40, 18], stop: [110],
     prev: [14, 45, 14], next: [14], smaller: [12, 25, 12], bigger: [12, 25, 26], speed: [16, 30, 16, 30, 16],
-    camera: [40, 40, 40], settings: [10, 25, 10], close: [10], theme: [14, 30, 14], found: [18, 30, 18, 30, 70], error: [90, 60, 90, 60, 90]
+    camera: [40, 40, 40], settings: [10, 25, 10], close: [10], theme: [14, 30, 14], found: [18, 30, 18, 30, 70], error: [90, 60, 90, 60, 90],
+    tabpic: [16, 30, 16], tabtext: [16, 30, 40], tabdesc: [40, 30, 16], described: [14, 25, 14, 25, 14, 25, 50]
   };
   var TONE = {
     read: [520, 780], photo: [440, 440], zoomin: [400, 600], zoomout: [600, 400], look: [500, 500, 700], light: [880],
     flip: [350, 700], listen: [440, 660], pause: [660, 440], stop: [300], prev: [330], next: [660], smaller: [380, 300],
-    bigger: [380, 480], speed: [520, 520, 520], camera: [300, 450], settings: [800], close: [250], theme: [560, 420], found: [520, 660, 880], error: [200, 160]
+    bigger: [380, 480], speed: [520, 520, 520], camera: [300, 450], settings: [800], close: [250], theme: [560, 420], found: [520, 660, 880], error: [200, 160],
+    tabpic: [480, 600], tabtext: [480, 360], tabdesc: [700, 900], described: [660, 880, 990]
   };
   var canVibrate = typeof navigator.vibrate === 'function';
   var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -398,7 +492,7 @@
   function endPtr(e) { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = null; }
   stage.addEventListener('pointerup', endPtr); stage.addEventListener('pointercancel', endPtr);
   stage.addEventListener('wheel', function (e) { e.preventDefault(); var r = stage.getBoundingClientRect(); setZoom(view.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
-  new ResizeObserver(function () { layout(); paginate(true); }).observe(stage);
+  new ResizeObserver(function () { layout(); repage(); }).observe(stage);
 
   /* -------------------------------------------------------------- camera */
   var frozenMode = false;
@@ -434,54 +528,85 @@
     else if (!frozenMode) startCamera();
   });
 
-  /* ---------------------------------------------------------- the reader */
-  var tokens = [], lines = [], page = 0, pages = 1, W = 0, current = -1;
-  function paginate(keep) {
-    W = viewport.clientWidth;
-    flow.style.width = W + 'px'; flow.style.columnWidth = W + 'px';
-    pages = Math.max(1, Math.round(flow.scrollWidth / W));
-    if (!keep) page = 0;
-    page = Math.min(page, pages - 1);
-    showPage();
+  /* ---------------------------------------------------------- the readers
+     Two of them, built the same way: the words that were read, and the AI's description.
+     Each pages sideways (columns) so nothing ever scrolls. */
+  function Reader(flowEl, viewportEl, infoEl, countEl) {
+    this.flow = flowEl; this.viewport = viewportEl; this.info = infoEl; this.count = countEl;
+    this.tokens = []; this.page = 0; this.pages = 1; this.W = 0; this.current = -1; this.startAt = 0; this.onToken = -1;
   }
-  function showPage() {
-    flow.style.transform = 'translateX(' + (-page * W) + 'px)';
-    $('pageinfo').textContent = 'Page ' + (page + 1) + ' of ' + pages;
-    $('btn-prev').disabled = page <= 0; $('btn-next').disabled = page >= pages - 1;
-  }
-  function go(n) { page = Math.max(0, Math.min(pages - 1, n)); showPage(); }
-  function pageOf(el) { var x = el.getBoundingClientRect().left - flow.getBoundingClientRect().left + page * W; return Math.floor((x + 2) / W); }
+  var RT = new Reader($('flow'), $('viewport'), $('pageinfo'), $('wc'));
+  var RD = new Reader($('dflow'), $('dviewport'), $('dpageinfo'), $('dwc'));
+  function active() { return app.getAttribute('data-view') === 'describe' ? RD : RT; }
 
+  Reader.prototype.paginate = function (keep) {
+    var W = this.viewport.clientWidth;
+    if (!W) return;
+    this.W = W;
+    this.flow.style.width = W + 'px'; this.flow.style.columnWidth = W + 'px';
+    this.pages = Math.max(1, Math.round(this.flow.scrollWidth / W));
+    if (!keep) this.page = 0;
+    this.page = Math.min(this.page, this.pages - 1);
+    this.show();
+  };
+  Reader.prototype.show = function () {
+    this.flow.style.transform = 'translateX(' + (-this.page * this.W) + 'px)';
+    this.info.textContent = this === RD ? 'Picture description · page ' + (this.page + 1) + ' of ' + this.pages : 'Page ' + (this.page + 1) + ' of ' + this.pages;
+    if (this === active()) navButtons();
+  };
+  Reader.prototype.go = function (n) { this.page = Math.max(0, Math.min(this.pages - 1, n)); this.show(); };
+  Reader.prototype.pageOf = function (el) { var x = el.getBoundingClientRect().left - this.flow.getBoundingClientRect().left + this.page * this.W; return Math.floor((x + 2) / this.W); };
+  function navButtons() { var r = active(); $('btn-prev').disabled = r.page <= 0; $('btn-next').disabled = r.page >= r.pages - 1; }
+  function repage() { if (app.dataset.mode !== 'result') return; var r = active(); r.paginate(true); }
+
+  /* text in paragraphs from the words OCR found: found = [{text, x, y, w, h, words:[{t,x,y,w,h}]}] */
   function buildText(found) {
-    // found: [{text, x, y, w, h}] in crop pixels, any order
     var ls = found.filter(function (l) { return l.text && l.text.trim(); }).sort(function (a, b) { return (Math.abs(a.y - b.y) < Math.min(a.h, b.h) * 0.5) ? a.x - b.x : a.y - b.y; });
     var avgH = ls.reduce(function (s, l) { return s + l.h; }, 0) / (ls.length || 1);
-    tokens = []; lines = [];
+    RT.tokens = [];
     var html = '<p>', prev = null;
     ls.forEach(function (l, li) {
       var gap = prev ? l.y - (prev.y + prev.h) : 0;
       var paraBreak = prev && gap > avgH * 0.9;
       if (paraBreak) html += '</p><p>';
-      var words = l.text.trim().split(/\s+/);
-      lines.push({ box: l, first: tokens.length });
-      words.forEach(function (w, wi) {
-        var last = tokens[tokens.length - 1];
+      var words = l.words && l.words.length ? l.words : l.text.trim().split(/\s+/).map(function (t, k, all) { return { t: t, x: l.x + l.w * k / all.length, y: l.y, w: l.w / all.length, h: l.h }; });
+      words.forEach(function (wd, wi) {
+        var w = wd.t, last = RT.tokens[RT.tokens.length - 1];
         // join a word split across two lines: "read-" + "ing"
-        if (wi === 0 && last && !paraBreak && /[A-Za-z]-$/.test(last.t) && /^[a-z]/.test(w)) { last.t = last.t.slice(0, -1) + w; last.el.textContent = last.t; return; }
-        var i = tokens.length;
-        tokens.push({ t: w, line: li, para: wi === 0 && paraBreak });
+        if (wi === 0 && last && !paraBreak && /[A-Za-z]-$/.test(last.t) && /^[a-z]/.test(w)) { last.t = last.t.slice(0, -1) + w; last.el.textContent = last.t; last.boxes.push(wd); return; }
+        var i = RT.tokens.length;
+        RT.tokens.push({ t: w, boxes: [wd], para: wi === 0 && paraBreak });
         html += '<span class="w" data-i="' + i + '">' + w.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span> ';
       });
       prev = l;
     });
-    flow.innerHTML = html + '</p>';
-    flow.querySelectorAll('.w').forEach(function (el) { tokens[+el.getAttribute('data-i')].el = el; });
-    $('wc').textContent = tokens.length + (tokens.length === 1 ? ' word' : ' words');
+    RT.flow.innerHTML = html + '</p>';
+    RT.flow.querySelectorAll('.w').forEach(function (el) { RT.tokens[+el.getAttribute('data-i')].el = el; });
+    RT.count.textContent = RT.tokens.length + (RT.tokens.length === 1 ? ' word' : ' words');
   }
-  flow.addEventListener('click', function (e) { var w = e.target.closest('.w'); if (w) speakFrom(+w.getAttribute('data-i')); });
+  /* the AI's words, as sentences you can follow along */
+  function buildDescription(text) {
+    var paras = String(text || '').replace(/\*\*|__|^#+\s*/gm, '').split(/\n{1,}/).map(function (p) { return p.replace(/^[-*•]\s+/, '').trim(); }).filter(Boolean);
+    RD.tokens = [];
+    var html = '';
+    paras.forEach(function (p) {
+      html += '<p>';
+      p.split(/\s+/).forEach(function (w, k) {
+        var i = RD.tokens.length;
+        RD.tokens.push({ t: w, boxes: [], para: k === 0 && i > 0 });
+        html += '<span class="w" data-i="' + i + '">' + w.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span> ';
+      });
+      html += '</p>';
+    });
+    RD.flow.innerHTML = html;
+    RD.flow.querySelectorAll('.w').forEach(function (el) { RD.tokens[+el.getAttribute('data-i')].el = el; });
+    RD.count.textContent = RD.tokens.length ? RD.tokens.length + ' words' : '';
+  }
+  RT.flow.addEventListener('click', function (e) { var w = e.target.closest('.w'); if (w) speakFrom(RT, +w.getAttribute('data-i')); });
+  RD.flow.addEventListener('click', function (e) { var w = e.target.closest('.w'); if (w) speakFrom(RD, +w.getAttribute('data-i')); });
 
   /* ---------------------------------------------------------- read aloud */
-  var voices = [], speechState = 'idle', startAt = 0, chunkRun = 0, onToken = -1;
+  var voices = [], speechState = 'idle', chunkRun = 0, speaking = RT;
   function loadVoices() {
     if (!('speechSynthesis' in window)) return;
     voices = speechSynthesis.getVoices().filter(function (v) { return /^en/i.test(v.lang); });
@@ -497,38 +622,41 @@
     $('listen-label').textContent = playing ? 'Pause' : (speechState === 'paused' ? 'Continue' : 'Listen');
     $('btn-listen').setAttribute('data-h', playing ? 'pause' : 'listen');
   }
-  function mark(i) {
-    if (current >= 0 && tokens[current]) { tokens[current].el.classList.remove('on'); var lb = boxes.children[tokens[current].line]; if (lb) lb.classList.remove('on'); }
-    current = i;
-    if (i < 0 || !tokens[i]) return;
-    tokens[i].el.classList.add('on');
-    var b = boxes.children[tokens[i].line]; if (b) b.classList.add('on');
-    var p = pageOf(tokens[i].el); if (p !== page) go(p);
+  // the lit-up word is shown in the big text, and on the picture itself
+  function mark(R, i) {
+    if (R.current >= 0 && R.tokens[R.current]) { R.tokens[R.current].el.classList.remove('on'); if (R === RT) litBoxes(R.tokens[R.current], false); }
+    R.current = i;
+    if (i < 0 || !R.tokens[i]) return;
+    R.tokens[i].el.classList.add('on');
+    if (R === RT) litBoxes(R.tokens[i], true);
+    if (R.viewport.clientWidth) { var p = R.pageOf(R.tokens[i].el); if (p !== R.page) R.go(p); }
   }
-  function chunksFrom(i) {
-    var out = [], cur = null;
-    for (var k = i; k < tokens.length; k++) {
-      if (!cur || tokens[k].para || cur.len > 170 && /[.!?;:]$/.test(tokens[k - 1].t) || cur.len > 260) { cur = { start: k, offs: [], text: '', len: 0 }; out.push(cur); }
-      cur.offs.push(cur.text.length); cur.text += (cur.text ? ' ' : '') + tokens[k].t; cur.len = cur.text.length;
+  function litBoxes(tok, on) { (tok.boxEls || []).forEach(function (b) { b.classList.toggle('on', on); }); }
+  function chunksFrom(R, i) {
+    var out = [], cur = null, T = R.tokens;
+    for (var k = i; k < T.length; k++) {
+      if (!cur || T[k].para || cur.len > 170 && /[.!?;:]$/.test(T[k - 1].t) || cur.len > 260) { cur = { start: k, offs: [], text: '', len: 0 }; out.push(cur); }
+      cur.offs.push(cur.text.length); cur.text += (cur.text ? ' ' : '') + T[k].t; cur.len = cur.text.length;
     }
     return out;
   }
-  function speakFrom(i) {
-    if (!('speechSynthesis' in window) || !tokens.length) { say('Reading aloud isn’t available in this browser.', true); return; }
-    speechSynthesis.cancel();
-    var run = ++chunkRun, list = chunksFrom(Math.max(0, i)), k = 0;
+  function speakFrom(R, i) {
+    if (!('speechSynthesis' in window) || !R.tokens.length) { say('Reading aloud isn’t available in this browser.', true); return; }
+    stopSpeaking(true);
+    speaking = R;
+    var run = ++chunkRun, list = chunksFrom(R, Math.max(0, i)), k = 0;
     speechState = 'playing'; setListenUI();
     function next() {
       if (run !== chunkRun) return;
-      if (k >= list.length) { speechState = 'idle'; startAt = 0; mark(-1); setListenUI(); say('Finished reading.'); return; }
+      if (k >= list.length) { speechState = 'idle'; R.startAt = 0; mark(R, -1); setListenUI(); say('Finished reading.'); return; }
       var c = list[k++], u = new SpeechSynthesisUtterance(c.text);
       u.rate = S.rate; u.lang = 'en-US';
       var v = voices.filter(function (x) { return x.voiceURI === S.voice; })[0]; if (v) { u.voice = v; u.lang = v.lang; }
-      mark(c.start); onToken = c.start;
+      mark(R, c.start); R.onToken = c.start;
       u.onboundary = function (e) {
         if (run !== chunkRun || e.charIndex === undefined) return;
         var j = 0; for (var q = 0; q < c.offs.length; q++) { if (c.offs[q] <= e.charIndex) j = q; else break; }
-        onToken = c.start + j; mark(onToken);
+        R.onToken = c.start + j; mark(R, R.onToken);
       };
       u.onend = next;
       u.onerror = function (e) { if (run === chunkRun && e.error !== 'canceled' && e.error !== 'interrupted') { speechState = 'idle'; setListenUI(); say('Couldn’t read aloud. Try another voice in Settings.', true); } };
@@ -537,15 +665,19 @@
     next();
     say('Reading aloud.');
   }
-  function pauseSpeaking() { if (speechState !== 'playing') return; chunkRun++; speechSynthesis.cancel(); startAt = Math.max(0, onToken); speechState = 'paused'; setListenUI(); say('Paused.'); }
-  function stopSpeaking() { chunkRun++; if ('speechSynthesis' in window) speechSynthesis.cancel(); speechState = 'idle'; startAt = 0; mark(-1); setListenUI(); }
+  function pauseSpeaking() { if (speechState !== 'playing') return; chunkRun++; speechSynthesis.cancel(); speaking.startAt = Math.max(0, speaking.onToken); speechState = 'paused'; setListenUI(); say('Paused.'); }
+  function stopSpeaking(keepMark) { chunkRun++; if ('speechSynthesis' in window) speechSynthesis.cancel(); speechState = 'idle'; if (!keepMark) { RT.startAt = 0; RD.startAt = 0; mark(RT, -1); mark(RD, -1); } setListenUI(); }
   $('btn-listen').addEventListener('click', function () {
-    if (speechState === 'playing') pauseSpeaking();
-    else speakFrom(speechState === 'paused' ? startAt : 0);
+    var R = active();
+    if (speechState === 'playing' && speaking === R) pauseSpeaking();
+    else if (speechState === 'paused' && speaking === R) speakFrom(R, R.startAt);
+    else speakFrom(R, 0);
   });
 
-  /* ------------------------------------------------------------ reading */
-  var ocr = { worker: null, loading: null, native: null };
+  /* ------------------------------------------------- reading (Tesseract.js)
+     The words are read right here with Tesseract.js (https://github.com/naptha/tesseract.js):
+     nothing is uploaded for this. The engine loads while you line up the shot. */
+  var ocr = { worker: null, loading: null };
   function loadScript(src) { return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = function () { no(new Error('Couldn’t load the reading engine. Check your connection.')); }; document.head.appendChild(s); }); }
   var progressCb = null;
   async function getWorker() {
@@ -561,8 +693,7 @@
     })();
     try { return await ocr.loading; } catch (e) { ocr.loading = null; throw e; }
   }
-  // get the engine ready while the person is still lining up the shot
-  setTimeout(function () { if (!('TextDetector' in window)) getWorker().catch(function () {}); }, 600);
+  setTimeout(function () { getWorker().catch(function () {}); }, 400);   // ready before the first press
 
   function cropCanvas(src) {
     var c = visibleCrop(), long = Math.max(c.sw, c.sh);
@@ -573,19 +704,118 @@
     return { cv: cv, crop: c, scale: scale };
   }
   async function recognise(cv) {
-    if ('TextDetector' in window) {
-      try {
-        ocr.native = ocr.native || new TextDetector();
-        var r = await ocr.native.detect(cv);
-        if (r && r.length) return r.map(function (t) { var b = t.boundingBox; return { text: t.rawValue, x: b.x, y: b.y, w: b.width, h: b.height }; });
-      } catch (e) { /* fall through to the engine */ }
-    }
     var w = await getWorker();
     var res = await w.recognize(cv);
     var d = res.data || {};
-    var ls = (d.lines || []).map(function (l) { var b = l.bbox; return { text: l.text, x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 }; });
-    if (!ls.length && d.text) ls = [{ text: d.text, x: 0, y: 0, w: cv.width, h: cv.height }];
+    var ls = (d.lines || []).map(function (l) {
+      var b = l.bbox;
+      var ws = (l.words || []).filter(function (x) { return x.text && x.text.trim() && !(x.confidence < 25 && x.text.trim().length <= 2); })
+        .map(function (x) { return { t: x.text.trim(), x: x.bbox.x0, y: x.bbox.y0, w: x.bbox.x1 - x.bbox.x0, h: x.bbox.y1 - x.bbox.y0 }; });
+      return { text: ws.length ? ws.map(function (x) { return x.t; }).join(' ') : l.text, x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0, words: ws };
+    });
+    if (!ls.length && d.text) ls = [{ text: d.text, x: 0, y: 0, w: cv.width, h: cv.height, words: [] }];
     return ls;
+  }
+
+  /* ----------------------------------------- the AI description (optional)
+     Sent the moment a picture is taken, so by the time the Describe tab is opened it is usually done.
+     It goes through the Code A Difference AI service to a third-party AI provider, only after the person accepted the notice. */
+  var D = { run: 0, ctl: null, text: '', state: 'idle', error: '' };   // state: idle | working | done | error
+  var AI_ENDPOINT = '/api/ai.php';
+  var AI_HERE = location.protocol === 'https:' && location.hostname === 'codeadifference.ct.ws' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  var SYSTEM = 'You are a careful picture description assistant for people who may not be able to see the picture. Describe only what is visibly supported by the image. Use clear, natural everyday language and short sentences. Start with the main subject, then the useful surroundings, positions, actions, colours and layout. Do not use markdown, lists or symbols. Do not guess identity, exact age, place, intent or emotion. If a detail is unclear, say so. Quote words in the picture only when they are clearly readable. Never invent details.';
+  var PROMPT = 'Describe this picture for someone who cannot see it, in two to five natural sentences. Say where important things are in relation to each other. Skip tiny background details. If the picture is blurry, say so plainly.';
+  function aiReady() { return AI.on && AI.agreedAt && AI_HERE; }
+  function snapshotJpeg(src) {
+    var long = Math.max(src.width, src.height), k = Math.min(1, 1024 / long);     // small: quick to upload and quick for the AI to read
+    var cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(src.width * k)); cv.height = Math.max(1, Math.round(src.height * k));
+    var x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(src, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', 0.72).split(',')[1];
+  }
+  function cleanCaption(v) {
+    var t = String(v || '').replace(/```[\w-]*\s*/gi, '').replace(/```/g, '').replace(/^\s{0,3}#{1,6}\s+/gm, '').replace(/^\s*(?:[-*•]|\d+[.)])\s+/gm, '');
+    t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/<[^>]*>/g, ' ').replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/[`_~]/g, '');
+    return t.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, ' ').trim();
+  }
+  /* the web host sometimes answers with a browser check page first: get past it once, then ask again */
+  var gateRenewal = null;
+  function renewGate() {
+    if (gateRenewal) return gateRenewal;
+    gateRenewal = new Promise(function (resolve) {
+      var before = document.cookie, frame = document.createElement('iframe'), t0 = Date.now(), loads = 0, finished = false;
+      frame.style.display = 'none'; frame.setAttribute('aria-hidden', 'true'); frame.src = location.origin + AI_ENDPOINT + '?gate=' + Date.now();
+      function done(ok) { if (finished) return; finished = true; clearInterval(poll); frame.remove(); gateRenewal = null; resolve(ok); }
+      frame.onload = function () { if (++loads >= 2) setTimeout(function () { done(true); }, 100); };
+      var poll = setInterval(function () { if (document.cookie !== before && /(^|;\s*)__test=/.test(document.cookie)) done(true); else if (Date.now() - t0 > 10000) done(false); }, 150);
+      document.body.appendChild(frame);
+    });
+    return gateRenewal;
+  }
+  async function fetchAi(url, opts) {
+    var res = await fetch(url, opts), type = res.headers.get('content-type') || '';
+    if (!res.ok || !/text\/html/i.test(type)) return res;
+    var body = await res.clone().text().catch(function () { return ''; });
+    if (!/slowAES|\/aes\.js|__test=/.test(body.slice(0, 4000))) return res;
+    await renewGate();
+    return fetch(url, opts);
+  }
+  async function askAI(b64, signal) {
+    var res = await fetchAi(AI_ENDPOINT, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: signal,
+      body: JSON.stringify({ system: SYSTEM, prompt: PROMPT, maxTokens: 220, json: false, search: false, files: [{ mimeType: 'image/jpeg', data: b64 }] })
+    });
+    var raw = await res.text(), j = null;
+    try { j = JSON.parse(raw); } catch (e) { /* not json */ }
+    if (!res.ok || !j || !j.ok) {
+      var m = (j && j.error) || '';
+      throw new Error(res.status === 429 || /rate|quota|busy|limit/i.test(m) ? 'The AI is busy right now. Try again in a minute.' : res.status === 413 || res.status === 415 ? 'That picture couldn’t be sent. Try another.' : res.status === 503 ? 'The AI service isn’t available right now.' : 'The AI couldn’t describe this picture. Try again.');
+    }
+    var text = cleanCaption(j.text);
+    if (!text) throw new Error('The AI sent back nothing for this picture.');
+    return text;
+  }
+  function setDot(kind) {
+    var dot = $('ddot'); dot.className = 'dot ' + kind;
+    $('dready').textContent = kind === 'ready' ? ' (ready)' : kind === 'busy' ? ' (working)' : '';
+  }
+  function startDescribe(src) {
+    if (D.ctl) D.ctl.abort();
+    D.run++; var run = D.run;
+    D.text = ''; D.error = '';
+    RD.tokens = []; RD.flow.innerHTML = ''; RD.count.textContent = '';
+    if (!aiReady()) { D.state = 'idle'; setDot('off'); renderDescribe(); return; }
+    D.state = 'working'; setDot('busy'); renderDescribe();
+    D.ctl = new AbortController();
+    var timer = setTimeout(function () { D.ctl.abort(); }, 60000);
+    askAI(snapshotJpeg(src), D.ctl.signal).then(function (t) {
+      if (run !== D.run) return;
+      D.text = t; D.state = 'done'; buildDescription(t); setDot('ready'); renderDescribe(); feel('described');
+      if (active() === RD) RD.paginate(true);
+    }).catch(function (e) {
+      if (run !== D.run) return;
+      D.state = 'error'; D.error = e && e.name === 'AbortError' ? 'The AI took too long. Try again.' : ((e && e.message) || 'The AI couldn’t describe this picture.'); setDot('off'); renderDescribe();
+    }).then(function () { clearTimeout(timer); });
+  }
+  /* what the Describe tab shows right now */
+  function renderDescribe() {
+    var st = $('dstate'), vp = $('dviewport'), fine = $('dfine');
+    function panel(html) { st.hidden = false; vp.hidden = true; st.innerHTML = html; }
+    function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+    fine.hidden = false;
+    if (!AI.agreedAt || !AI.on) {
+      panel('<h2>Let an AI describe your pictures?</h2><p>It sees each picture the moment you take it, so the description is ready when you open this tab. The picture is sent to a third-party AI provider.</p><button class="btn wide" id="d-setup" data-h="found" type="button">Read the notice and turn it on</button>');
+      var b = $('d-setup'); if (b) b.addEventListener('click', function () { openConsent(false); });
+      return;
+    }
+    if (!AI_HERE) { panel('<h2>Open it on the website</h2><p>Picture descriptions use the Code A Difference AI service, so they work when Visual Reading is opened at codeadifference.ct.ws.</p>'); return; }
+    if (D.state === 'idle') { panel('<h2>Take a picture first</h2><p>Press Read on the camera. The AI starts looking the moment you do.</p>'); return; }
+    if (D.state === 'error') {
+      panel('<h2>The description didn’t work</h2><p>' + esc(D.error) + '</p><button class="btn wide" id="d-retry" data-h="camera" type="button">Try again</button>');
+      var rt = $('d-retry'); if (rt) rt.addEventListener('click', function () { if (frozenMode) startDescribe(frozen); });
+      return;
+    }
+    if (D.state === 'working') { panel('<div class="ring" aria-hidden="true"></div><h2>The AI is looking…</h2><p>Usually a few seconds. You can keep reading the words meanwhile.</p>'); return; }
+    st.hidden = true; vp.hidden = false;      // done
   }
 
   var busy = false;
@@ -603,33 +833,55 @@
         video.hidden = true; frozen.hidden = false; frozenMode = true; layout();
       }
       if (wholeImage) { view.z = 1; view.tx = 0; view.ty = 0; view.nativeZ = 1; apply(); }
+      startDescribe(frozen);                                 // the AI starts looking right now, while the words are read
       var made = cropCanvas(frozen);
       var found = await recognise(made.cv);
       var text = found.map(function (l) { return l.text; }).join(' ').trim();
-      if (!text) { say('No words found. Move closer, add light, and try again.', true); feel('error'); backToCamera(true); return; }
+      if (!text) {
+        if (D.state === 'working' || D.state === 'done') { /* no words, but the AI may still have something to say */ showResult(true); say('No words found, but you can see what the AI describes.'); feel('found'); return; }
+        say('No words found. Move closer, add light, and try again.', true); feel('error'); backToCamera(true); return;
+      }
       buildText(found);
       boxes.innerHTML = '';
-      lines.forEach(function (l, i) {
-        var b = l.box, d = document.createElement('div'); d.className = 'box';
-        var mx = made.crop.sx + b.x / made.scale, my = made.crop.sy + b.y / made.scale;
-        d.style.left = (mx / media.w * 100) + '%'; d.style.top = (my / media.h * 100) + '%';
-        d.style.width = (b.w / made.scale / media.w * 100) + '%'; d.style.height = (b.h / made.scale / media.h * 100) + '%';
-        d.addEventListener('click', function () { if (!dragMoved) speakFrom(lines[i].first); });
-        boxes.appendChild(d);
+      RT.tokens.forEach(function (tok, i) {
+        tok.boxEls = [];
+        tok.boxes.forEach(function (b) {
+          if (boxes.children.length > 900) return;
+          var d = document.createElement('div'); d.className = 'box';
+          var mx = made.crop.sx + b.x / made.scale, my = made.crop.sy + b.y / made.scale;
+          d.style.left = (mx / media.w * 100) + '%'; d.style.top = (my / media.h * 100) + '%';
+          d.style.width = (b.w / made.scale / media.w * 100) + '%'; d.style.height = (b.h / made.scale / media.h * 100) + '%';
+          d.addEventListener('click', function () { if (!dragMoved) speakFrom(RT, i); });
+          boxes.appendChild(d); tok.boxEls.push(d);
+        });
       });
-      app.setAttribute('data-mode', 'result'); $('tips').hidden = true; $('btn-listen').focus({ preventScroll: true });
-      requestAnimationFrame(function () { layout(); paginate(false); });
-      say('Found ' + tokens.length + ' words.'); feel('found');
-      if (S.auto) setTimeout(function () { speakFrom(0); }, 250);
+      showResult(false);
+      say('Found ' + RT.tokens.length + ' words.'); feel('found');
+      if (S.auto) setTimeout(function () { speakFrom(RT, 0); }, 250);
     } catch (e) {
       say(e && e.message ? e.message : 'Reading didn’t work. Try again.', true); feel('error'); backToCamera(true);
     } finally { $('busy').hidden = true; progressCb = null; busy = false; }
   }
+  function showResult(onlyDescribe) {
+    app.setAttribute('data-mode', 'result');
+    setView(onlyDescribe ? 'describe' : S.view, true);
+    requestAnimationFrame(function () { layout(); RT.paginate(false); RD.paginate(true); });
+    $('btn-listen').focus({ preventScroll: true });
+  }
+  function setView(v, quiet) {
+    app.setAttribute('data-view', v);
+    [['picture', 'tab-picture'], ['text', 'tab-text'], ['describe', 'tab-describe']].forEach(function (p) { $(p[1]).setAttribute('aria-selected', String(p[0] === v)); });
+    if (speechState !== 'idle' && speaking !== active() && v !== 'picture') stopSpeaking();
+    if (v === 'describe') renderDescribe();
+    requestAnimationFrame(function () { layout(); active().paginate(true); navButtons(); });
+    if (!quiet) say(v === 'picture' ? 'The picture, with the words lit up.' : v === 'text' ? 'The words in big type.' : (D.state === 'done' ? 'What the AI sees.' : D.state === 'working' ? 'The AI is still looking…' : 'Picture description.'));
+  }
   function backToCamera(quiet) {
     stopSpeaking();
-    boxes.innerHTML = ''; tokens = []; lines = []; flow.innerHTML = '';
-    app.setAttribute('data-mode', 'live'); $('tips').hidden = false;
-    frozen.hidden = true; frozenMode = false;
+    if (D.ctl) D.ctl.abort(); D.run++; D.state = 'idle'; setDot('off');
+    boxes.innerHTML = ''; RT.tokens = []; RT.flow.innerHTML = ''; RD.tokens = []; RD.flow.innerHTML = '';
+    app.setAttribute('data-mode', 'live'); app.setAttribute('data-view', 'picture');
+    frozen.hidden = true; frozenMode = false; view.z = 1; view.tx = 0; view.ty = 0;
     if (haveCamera && stream) { video.hidden = false; media = { w: video.videoWidth || media.w, h: video.videoHeight || media.h }; layout(); if (!quiet) say('Camera ready. Press Read.'); }
     else startCamera();
     $('btn-read').focus({ preventScroll: true });
@@ -649,16 +901,19 @@
   $('btn-flip').addEventListener('click', function () { facing = facing === 'environment' ? 'user' : 'environment'; startCamera(); });
   $('btn-retry').addEventListener('click', function () { startCamera(); });
   [$('btn-photo'), $('btn-photo2')].forEach(function (b) { b.addEventListener('click', function () { $('file').click(); }); });
-  $('btn-prev').addEventListener('click', function () { go(page - 1); });
-  $('btn-next').addEventListener('click', function () { go(page + 1); });
-  $('btn-smaller').addEventListener('click', function () { S.fs = Math.max(18, S.fs - 4); save(); applyLook(); paginate(true); say('Text size ' + S.fs); });
-  $('btn-bigger').addEventListener('click', function () { S.fs = Math.min(84, S.fs + 4); save(); applyLook(); paginate(true); say('Text size ' + S.fs); });
+  $('tab-picture').addEventListener('click', function () { setView('picture'); });
+  $('tab-text').addEventListener('click', function () { setView('text'); });
+  $('tab-describe').addEventListener('click', function () { setView('describe'); });
+  $('btn-prev').addEventListener('click', function () { var R = active(); R.go(R.page - 1); });
+  $('btn-next').addEventListener('click', function () { var R = active(); R.go(R.page + 1); });
+  $('btn-smaller').addEventListener('click', function () { S.fs = Math.max(18, S.fs - 4); save(); applyLook(); RT.paginate(true); RD.paginate(true); say('Text size ' + S.fs); });
+  $('btn-bigger').addEventListener('click', function () { S.fs = Math.min(84, S.fs + 4); save(); applyLook(); RT.paginate(true); RD.paginate(true); say('Text size ' + S.fs); });
   var SPEEDS = [0.8, 1, 1.25, 1.5, 0.6];
   function showSpeed() { $('speed-val').textContent = (+S.rate.toFixed(2)) + '×'; $('rate').value = S.rate; $('rate-val').textContent = (+S.rate.toFixed(2)) + '×'; }
   $('btn-speed').addEventListener('click', function () {
     var i = SPEEDS.findIndex(function (s) { return Math.abs(s - S.rate) < 0.06; });
     S.rate = SPEEDS[(i + 1) % SPEEDS.length]; save(); showSpeed(); say('Speed ' + S.rate + '×');
-    if (speechState === 'playing') speakFrom(Math.max(0, onToken));
+    if (speechState === 'playing') speakFrom(speaking, Math.max(0, speaking.onToken));
   });
 
   /* photos: choose or drop */
@@ -679,19 +934,41 @@
   ['dragleave', 'drop'].forEach(function (n) { stage.addEventListener(n, function (e) { e.preventDefault(); stage.classList.remove('drag'); if (n === 'drop') readFile(e.dataTransfer.files[0]); }); });
   document.addEventListener('paste', function (e) { var f = Array.from(e.clipboardData && e.clipboardData.files || [])[0]; if (f) readFile(f); });
 
-  /* settings */
-  var dlg = $('settings');
+  /* settings and the AI notice */
+  var dlg = $('settings'), cdlg = $('ai-consent');
   $('btn-settings').addEventListener('click', function () { syncSettings(); dlg.showModal(); });
   $('settings-x').addEventListener('click', function () { dlg.close(); });
   dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+  function openConsent(readonly) {
+    var agreed = !!AI.agreedAt && AI.on;
+    $('ai-agree').checked = false; $('ai-yes').disabled = true;
+    $('ai-agree-row').hidden = !!readonly; $('ai-yes').hidden = !!readonly; $('ai-no').textContent = readonly ? 'Close' : 'Not now';
+    if (dlg.open) dlg.close(); cdlg.showModal(); (readonly ? $('ai-no') : $('ai-agree')).focus();
+  }
+  $('ai-agree').addEventListener('change', function (e) { $('ai-yes').disabled = !e.target.checked; });
+  $('ai-no').addEventListener('click', function () { cdlg.close(); if (!$('ai-agree-row').hidden) { AI.on = false; saveAI(); } syncSettings(); renderDescribe(); });
+  $('ai-yes').addEventListener('click', function () {
+    AI.on = true; AI.agreedAt = Date.now(); saveAI(); cdlg.close(); syncSettings(); renderDescribe();
+    say('Picture descriptions are on.');
+    if (frozenMode && app.dataset.mode === 'result') startDescribe(frozen);
+  });
+  $('opt-ai').addEventListener('change', function (e) {
+    if (e.target.checked) { if (AI.agreedAt) { AI.on = true; saveAI(); syncSettings(); renderDescribe(); } else { e.target.checked = false; openConsent(false); } }
+    else { AI.on = false; saveAI(); if (D.ctl) D.ctl.abort(); syncSettings(); renderDescribe(); }
+  });
+  $('s-terms').addEventListener('click', function () { openConsent(true); });
+  $('d-terms').addEventListener('click', function () { openConsent(true); });
   function syncSettings() {
     document.querySelectorAll('#seg-theme .btn').forEach(function (b) { var on = b.dataset.theme === S.theme; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); });
     document.querySelectorAll('#seg-spacing .btn').forEach(function (b) { var on = b.dataset.spacing === S.spacing; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); });
+    document.querySelectorAll('#seg-view .btn').forEach(function (b) { var on = b.dataset.view === S.view; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); });
     $('opt-haptics').checked = S.haptics; $('opt-sounds').checked = S.sounds; $('opt-auto').checked = S.auto; $('voice').value = S.voice; showSpeed();
+    $('opt-ai').checked = !!(AI.on && AI.agreedAt); $('ai-where').hidden = AI_HERE;
     $('haptic-note').textContent = canVibrate ? 'Each button vibrates in its own pattern.' : (isIOS ? 'iPhones give a light tap. Patterns are limited, so turn on Sounds to tell buttons apart.' : 'This device can’t vibrate. Turn on Sounds to tell buttons apart.');
   }
   $('seg-theme').addEventListener('click', function (e) { var b = e.target.closest('[data-theme]'); if (!b) return; S.theme = b.dataset.theme; save(); applyLook(); syncSettings(); });
-  $('seg-spacing').addEventListener('click', function (e) { var b = e.target.closest('[data-spacing]'); if (!b) return; S.spacing = b.dataset.spacing; save(); applyLook(); syncSettings(); paginate(true); });
+  $('seg-spacing').addEventListener('click', function (e) { var b = e.target.closest('[data-spacing]'); if (!b) return; S.spacing = b.dataset.spacing; save(); applyLook(); syncSettings(); RT.paginate(true); RD.paginate(true); });
+  $('seg-view').addEventListener('click', function (e) { var b = e.target.closest('[data-view]'); if (!b) return; S.view = b.dataset.view; save(); syncSettings(); });
   $('voice').addEventListener('change', function (e) { S.voice = e.target.value; save(); });
   $('rate').addEventListener('input', function (e) { S.rate = +e.target.value; save(); showSpeed(); });
   $('opt-haptics').addEventListener('change', function (e) { S.haptics = e.target.checked; save(); if (S.haptics) feel('found'); });
@@ -700,20 +977,24 @@
 
   /* keyboard */
   document.addEventListener('keydown', function (e) {
-    if (dlg.open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-    var k = e.key.toLowerCase();
-    if (k === 'r' && app.dataset.mode === 'live') { feel('read'); $('btn-read').click(); }
-    else if (k === 'l' && app.dataset.mode === 'result') { feel(speechState === 'playing' ? 'pause' : 'listen'); $('btn-listen').click(); }
+    if (dlg.open || cdlg.open || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    var k = e.key.toLowerCase(), res = app.dataset.mode === 'result';
+    if (k === 'r' && !res) { feel('read'); $('btn-read').click(); }
+    else if (k === 'l' && res) { feel(speechState === 'playing' ? 'pause' : 'listen'); $('btn-listen').click(); }
+    else if (k === 'p' && res) { feel('tabpic'); setView('picture'); }
+    else if (k === 't' && res) { feel('tabtext'); setView('text'); }
+    else if (k === 'd' && res) { feel('tabdesc'); setView('describe'); }
     else if (k === '+' || k === '=') { feel('zoomin'); $('btn-zoomin').click(); }
     else if (k === '-') { feel('zoomout'); $('btn-zoomout').click(); }
-    else if (k === 'arrowright' && app.dataset.mode === 'result') { go(page + 1); }
-    else if (k === 'arrowleft' && app.dataset.mode === 'result') { go(page - 1); }
-    else if (k === 'escape' && app.dataset.mode === 'result') { feel('camera'); backToCamera(false); }
+    else if (k === 'arrowright' && res) { var a = active(); a.go(a.page + 1); }
+    else if (k === 'arrowleft' && res) { var b = active(); b.go(b.page - 1); }
+    else if (k === 'escape' && res) { feel('camera'); backToCamera(false); }
   });
 
   /* go */
-  applyLook(); applyFilter(); showSpeed(); setListenUI();
-  new ResizeObserver(function () { if (app.dataset.mode === 'result') paginate(true); }).observe(viewport);
+  applyLook(); applyFilter(); showSpeed(); setListenUI(); setDot('off');
+  new ResizeObserver(function () { if (app.dataset.mode === 'result') { RT.paginate(true); RD.paginate(true); } }).observe($('viewport'));
+  new ResizeObserver(function () { if (app.dataset.mode === 'result') RD.paginate(true); }).observe($('dviewport'));
   startCamera();
 })();
 </script>
